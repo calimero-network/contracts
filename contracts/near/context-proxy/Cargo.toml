@@ -10,8 +10,8 @@ license.workspace = true
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-near-sdk.workspace = true
 calimero-context-config.workspace = true
+near-sdk.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
