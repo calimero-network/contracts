@@ -10,9 +10,9 @@ license.workspace = true
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+calimero-context-config.workspace = true
 cfg-if.workspace = true
 near-sdk = { workspace = true, features = ["unstable"] }
-calimero-context-config.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
