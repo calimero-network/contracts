@@ -21,6 +21,8 @@ jobs:
 
       - name: Setup rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ci-checks
 
       - name: Build
         run: |
