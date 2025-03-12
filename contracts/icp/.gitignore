@@ -27,5 +27,4 @@ dist/
 # testing library
 pocket-ic
 
-!**/res/*.did
 **/canister_ids.json

@@ -11,6 +11,31 @@ effective for everyone.
 
 Start by reading the [README][] to understand the project better.
 
+## Local Project Setup
+
+### Dependencies
+- [`rustc` and `cargo`](https://www.rust-lang.org/tools/install) - required for rust contracts
+- [wasm-opt](https://github.com/WebAssembly/binaryen/discussions/3797) - optional, for optimizing wasm binaries
+- [candid-extractor](https://github.com/dfinity/candid-extractor) - optional, used for DID generation for ICP contracts
+- [PocketIC](https://github.com/dfinity/pocketic) - required for ICP contracts testing
+
+### Rust Contracts
+To build and test rust contracts locally, run the following commands:
+
+```bash
+./scripts/build-rust.sh
+cargo test
+```
+
+### Versions
+All contracts must have the same version as the core project.
+To bump contract versions, run the following commands:
+
+```bash
+./scripts/bump-contracts-version.sh 0.4.0
+./scripts/build-rust.sh
+```
+
 ## Project Status
 
 This project is actively being developed.
