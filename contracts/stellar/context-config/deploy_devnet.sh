@@ -83,7 +83,7 @@ stellar contract invoke \
     --owner "$ACCOUNT_ADDRESS"
 
 EXTERNAL_CONTRACT_ID=$(stellar contract deploy \
-    --wasm "../context-proxy/mock_external/res/calimero_mock_external_stellar.wasm" \
+    --wasm "../context-proxy/mock/res/calimero_mock_external_stellar.wasm" \
     --source local \
     --network local \
     --salt "98765" \
