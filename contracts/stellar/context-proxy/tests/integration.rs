@@ -28,7 +28,7 @@ mod context_contract {
 // Import mock external contract
 mod mock_external {
     soroban_sdk::contractimport!(
-        file = "../context-proxy/mock_external/res/calimero_mock_external_stellar.wasm"
+        file = "../context-proxy/mock/res/calimero_mock_external_stellar.wasm"
     );
 }
 

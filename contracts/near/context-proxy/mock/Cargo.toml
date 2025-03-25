@@ -1,5 +1,5 @@
 [package]
-name = "calimero-test-counter-near"
+name = "calimero-mock-external-near"
 version = "0.4.0"
 authors.workspace = true
 edition.workspace = true

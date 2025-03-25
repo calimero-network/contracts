@@ -11,14 +11,14 @@ members = [
     "./contracts/near/registry",
     "./contracts/near/context-config",
     "./contracts/near/context-proxy",
-    "./contracts/near/test-counter",
+    "./contracts/near/context-proxy/mock",
 
     "./contracts/icp/context-config",
     "./contracts/icp/context-proxy",
-    "./contracts/icp/context-proxy/mock/external",
+    "./contracts/icp/context-proxy/mock",
 
     "./contracts/stellar/context-config",
-    "./contracts/stellar/context-proxy/mock_external",
+    "./contracts/stellar/context-proxy/mock",
     "./contracts/stellar/context-proxy",
 ]
 

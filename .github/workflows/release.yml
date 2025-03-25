@@ -39,7 +39,7 @@ jobs:
       - name: Setup matrix
         id: setup_matrix
         run: |
-          echo 'rust_protocol_matrix=["icp", "near", "stellar"]' >> "$GITHUB_OUTPUT"
+          echo 'rust_protocol_matrix=["icp", "near", "stellar", "ethereum"]' >> "$GITHUB_OUTPUT"
 
       - name: Get version info
         id: version_info
@@ -51,6 +51,11 @@ jobs:
 
           version_candidate=""
           for protocol in $(echo '${{ steps.setup_matrix.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
+            # Skip version check for ethereum contracts
+            if [ "$protocol" == "ethereum" ]; then
+              continue
+            fi
+            
             for contract in "contracts/${protocol}"/*; do
               if [ -d "${contract}" ]; then
                 contract_version=$(cargo pkgid --manifest-path "${contract}/Cargo.toml" | awk -F'[#@]' '{print $NF}')
@@ -121,6 +126,11 @@ jobs:
         with:
           key: release
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
       - name: Install candid-extractor
         run: |
           TMPDIR=$(mktemp -d)
@@ -164,11 +174,30 @@ jobs:
             local archive_name="${protocol_name}.tar.gz"
             local tmp_dir=$(mktemp -d)
 
-            for contract in "contracts/${protocol_name}"/*; do
-              if [ -d "${contract}" ]; then
-                find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-              fi
-            done
+            if [ "${protocol_name}" == "ethereum" ]; then
+              # Handle Ethereum contracts - preserve directory structure
+              for contract in "contracts/${protocol_name}"/*; do
+                if [ -d "${contract}" ]; then
+                  # Copy maintaining the directory structure
+                  cp -r "${contract}/out" "$tmp_dir/"
+                  
+                  # Copy mock contract artifacts if they exist
+                  if [ -d "${contract}/mock/out" ]; then
+                    cp -r "${contract}/mock/out" "$tmp_dir/mock/"
+                  fi
+                fi
+              done
+            else
+              # Original handling for other protocols
+              for contract in "contracts/${protocol_name}"/*; do
+                if [ -d "${contract}" ]; then
+                  find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                  if [ -d "${contract}/mock/res" ]; then
+                    find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                  fi
+                fi
+              done
+            fi
 
             ls -al "$tmp_dir"
 

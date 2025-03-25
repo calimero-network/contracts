@@ -24,7 +24,7 @@ fi
 # Start Stellar Quickstart container
 docker run --rm -d -p 8000:8000 \
     --name stellar \
-    stellar/quickstart:testing \
+    stellar/quickstart \
     --local --enable rpc --limits unlimited
 
 # Wait for the container to be ready
@@ -58,7 +58,7 @@ stellar network add local \
     --network-passphrase "Standalone Network ; February 2017"
 
 # Generate and fund keys
-stellar keys generate local --network local --fund
+stellar keys generate --default-seed local --network local --fund
 ACCOUNT_ADDRESS=$(stellar keys address local)
 SECRET_KEY=$(stellar keys show local)
 
@@ -67,6 +67,7 @@ CONTRACT_ID=$(stellar contract deploy \
     --wasm "./res/calimero_context_config_stellar.wasm" \
     --source local \
     --network local \
+    --salt "12345" \
     -- \
     --owner "$ACCOUNT_ADDRESS" \
     --ledger_id CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC | tail -n 1)
@@ -81,15 +82,15 @@ stellar contract invoke \
     --proxy-wasm-file-path "../context-proxy/res/calimero_context_proxy_stellar.wasm" \
     --owner "$ACCOUNT_ADDRESS"
 
-# Update the config.json file with the new values
-jq --arg contractId "$CONTRACT_ID" \
-   --arg publicKey "$ACCOUNT_ADDRESS" \
-   --arg secretKey "$SECRET_KEY" \
-  '.protocolSandboxes[2].config.contextConfigContractId = $contractId |
-   .protocolSandboxes[2].config.publicKey = $publicKey |
-   .protocolSandboxes[2].config.secretKey = $secretKey' \
-  ../../e2e-tests/config/config.json > tmp.json && mv tmp.json ../../e2e-tests/config/config.json
+EXTERNAL_CONTRACT_ID=$(stellar contract deploy \
+    --wasm "../context-proxy/mock_external/res/calimero_mock_external_stellar.wasm" \
+    --source local \
+    --network local \
+    --salt "98765" \
+    -- \
+    --token CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC | tail -n 1)
 
 echo "Contract ID: $CONTRACT_ID"
 echo "Account address: $ACCOUNT_ADDRESS"
 echo "Secret key: $SECRET_KEY"
+echo "External contract ID: $EXTERNAL_CONTRACT_ID"
