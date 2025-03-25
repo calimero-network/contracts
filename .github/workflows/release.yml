@@ -51,6 +51,11 @@ jobs:
 
           version_candidate=""
           for protocol in $(echo '${{ steps.setup_matrix.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
+            # Skip version check for ethereum contracts
+            if [ "$protocol" == "ethereum" ]; then
+              continue
+            fi
+            
             for contract in "contracts/${protocol}"/*; do
               if [ -d "${contract}" ]; then
                 contract_version=$(cargo pkgid --manifest-path "${contract}/Cargo.toml" | awk -F'[#@]' '{print $NF}')
