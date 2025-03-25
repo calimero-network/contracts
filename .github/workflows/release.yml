@@ -39,7 +39,7 @@ jobs:
       - name: Setup matrix
         id: setup_matrix
         run: |
-          echo 'rust_protocol_matrix=["icp", "near", "stellar"]' >> "$GITHUB_OUTPUT"
+          echo 'rust_protocol_matrix=["icp", "near", "stellar", "ethereum"]' >> "$GITHUB_OUTPUT"
 
       - name: Get version info
         id: version_info
@@ -164,11 +164,30 @@ jobs:
             local archive_name="${protocol_name}.tar.gz"
             local tmp_dir=$(mktemp -d)
 
-            for contract in "contracts/${protocol_name}"/*; do
-              if [ -d "${contract}" ]; then
-                find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-              fi
-            done
+            if [ "${protocol_name}" == "ethereum" ]; then
+              # Handle Ethereum contracts - preserve directory structure
+              for contract in "contracts/${protocol_name}"/*; do
+                if [ -d "${contract}" ]; then
+                  # Copy maintaining the directory structure
+                  cp -r "${contract}/out" "$tmp_dir/"
+                  
+                  # Copy mock contract artifacts if they exist
+                  if [ -d "${contract}/mock/out" ]; then
+                    cp -r "${contract}/mock/out" "$tmp_dir/mock/"
+                  fi
+                fi
+              done
+            else
+              # Original handling for other protocols
+              for contract in "contracts/${protocol_name}"/*; do
+                if [ -d "${contract}" ]; then
+                  find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                  if [ -d "${contract}/mock/res" ]; then
+                    find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                  fi
+                fi
+              done
+            fi
 
             ls -al "$tmp_dir"
 

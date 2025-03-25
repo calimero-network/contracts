@@ -618,6 +618,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "calimero-mock-external-near"
+version = "0.4.0"
+dependencies = [
+ "eyre",
+ "near-sdk",
+ "near-workspaces",
+ "tokio 1.41.1",
+]
+
+[[package]]
 name = "calimero-mock-external-stellar"
 version = "0.0.0"
 dependencies = [
@@ -633,16 +643,6 @@ dependencies = [
  "near-workspaces",
  "semver",
  "serde_json",
- "tokio 1.41.1",
-]
-
-[[package]]
-name = "calimero-test-counter-near"
-version = "0.4.0"
-dependencies = [
- "eyre",
- "near-sdk",
- "near-workspaces",
  "tokio 1.41.1",
 ]
 

@@ -14,5 +14,7 @@ contracts/icp/context-config/build.sh
 contracts/icp/context-proxy/build_contracts.sh
 contracts/stellar/context-config/build.sh
 contracts/stellar/context-proxy/build_contracts.sh
+contracts/ethereum/context-config/build.sh
+contracts/ethereum/context-proxy/build_contracts.sh
 
 cargo build --all-targets --tests
