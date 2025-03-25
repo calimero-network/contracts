@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "forge-std/console.sol";
 // Interface for the context config contract - simplified
 interface IContextConfig {
     function hasMember(bytes32 contextId, bytes32 userId) external view returns (bool);
@@ -118,6 +119,7 @@ contract ContextProxy {
     function mutate(
         SignedRequest calldata signedRequest
     ) external returns (ProposalWithApprovals memory) {
+
         // Verify signature and authorization
         bytes32 messageHash = keccak256(abi.encode(signedRequest.payload));
         
@@ -137,10 +139,12 @@ contract ContextProxy {
             revert InvalidSignature();
         }
 
+
         // Check if user is a member
         if (!isMember(signedRequest.payload.userId)) {
             revert Unauthorized();
         }
+
 
         // Process based on request kind
         if (signedRequest.payload.kind == RequestKind.Propose) {
@@ -162,10 +166,12 @@ contract ContextProxy {
     function internalCreateProposal(
         Proposal memory proposal
     ) internal returns (ProposalWithApprovals memory) {
+
         // Validate proposal
         if (proposal.actions.length == 0) {
             revert InvalidAction();
         }
+
 
         // Handle delete action if present
         for (uint i = 0; i < proposal.actions.length; i++) {
@@ -188,16 +194,19 @@ contract ContextProxy {
             }
         }
 
+
         // Check proposal limit
         uint32 authorProposalCount = numProposalsPk[proposal.authorId];
         if (authorProposalCount >= activeProposalsLimit) {
             revert TooManyActiveProposals();
         }
 
+
         // Validate all actions
         for (uint i = 0; i < proposal.actions.length; i++) {
             validateProposalAction(proposal.actions[i]);
         }
+
 
         // Store proposal
         bytes32 proposalId = proposal.id;
@@ -214,6 +223,7 @@ contract ContextProxy {
         
         // Add to the list of all proposal IDs
         allProposalIds.push(proposalId);
+
 
         emit ProposalCreated(proposalId, proposal.authorId);
 
@@ -286,11 +296,56 @@ contract ContextProxy {
      */
     function validateProposalAction(ProposalAction memory action) internal pure {
         if (action.kind == ProposalActionKind.ExternalFunctionCall) {
-         
-            (address target, bytes memory callData,) = abi.decode(
-                action.data,
-                (address, bytes, uint256)
-            );
+
+
+            // Get the data bytes
+            bytes memory data = action.data;
+
+            // Log the raw data bytes without using slices
+            if (data.length >= 32) {
+                bytes32 chunk1;
+                assembly {
+                    // Load 32 bytes from memory - need to add 32 to skip the length field
+                    chunk1 := mload(add(data, 32))
+                }
+            }
+
+            // Check if the first 32 bytes are a pointer (0x20)
+            bytes32 firstWord;
+            assembly {
+                firstWord := mload(add(data, 32))
+            }
+
+            bytes memory actualData;
+            address target;
+            bytes memory callData;
+            uint256 value;
+
+            if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
+                // Skip the first 32 bytes (the pointer) and use the rest
+                actualData = new bytes(data.length - 32);
+                for (uint i = 0; i < data.length - 32; i++) {
+                    actualData[i] = data[i + 32];
+                }
+
+                // Attempt the decode on the adjusted data
+                (target, callData, value) = abi.decode(
+                    actualData,
+                    (address, bytes, uint256)
+                );
+            } else {
+                // Use the original data
+                (target, callData, value) = abi.decode(
+                    data,
+                    (address, bytes, uint256)
+                );
+            }
+            
+            // (address target, bytes memory callData,) = abi.decode(
+            //     action.data,
+            //     (address, bytes, uint256)
+            // );
+
             if (target == address(0)) {
                 revert InvalidAction();
             }
@@ -363,16 +418,51 @@ contract ContextProxy {
         for (uint i = 0; i < actionsLength; i++) {
             ProposalAction memory action = proposal.actions[i];
             
-            if (action.kind == ProposalActionKind.ExternalFunctionCall) {     
-                // Use the original data
-                (address target, bytes memory callData, uint256 value) = abi.decode(
-                    action.data,
-                    (address, bytes, uint256)
-                );
-          
+            if (action.kind == ProposalActionKind.ExternalFunctionCall) {
+                // Get the data bytes
+                bytes memory data = action.data;
+
+                // Log the raw data bytes without using slices
+                if (data.length >= 32) {
+                    bytes32 chunk1;
+                    assembly {
+                        // Load 32 bytes from memory - need to add 32 to skip the length field
+                        chunk1 := mload(add(data, 32))
+                    }
+                }
+
+                // Check if the first 32 bytes are a pointer (0x20)
+                bytes32 firstWord;
+                assembly {
+                    firstWord := mload(add(data, 32))
+                }
+
+                bytes memory actualData;
+                address target;
+                bytes memory callData;
+                uint256 value;
+
+                if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
+                    // Skip the first 32 bytes (the pointer) and use the rest
+                    actualData = new bytes(data.length - 32);
+                    for (uint i = 0; i < data.length - 32; i++) {
+                        actualData[i] = data[i + 32];
+                    }
+
+                    // Attempt the decode on the adjusted data
+                    (target, callData, value) = abi.decode(
+                        actualData,
+                        (address, bytes, uint256)
+                    );
+                } else {
+                    // Use the original data
+                    (target, callData, value) = abi.decode(
+                        data,
+                        (address, bytes, uint256)
+                    );
+                }
                 // Execute external call
                 (bool success, ) = target.call{value: value}(callData);
-
                 if (!success) {
                     revert InvalidAction();
                 }
@@ -601,37 +691,6 @@ contract ContextProxy {
         // Update the implementation
         _setImplementation(implementation);
     }
-
-    // /**
-    //  * @dev Fallback function that delegates calls to the implementation
-    //  */
-    // fallback() external payable {
-    //     address implementation = _getImplementation();
-    //     require(implementation != address(0), "Implementation not set");
-
-    //     assembly {
-    //         // Copy msg.data. We take full control of memory in this inline assembly
-    //         // block because it will not return to Solidity code. We overwrite the
-    //         // Solidity scratch pad at memory position 0.
-    //         calldatacopy(0, 0, calldatasize())
-
-    //         // Call the implementation.
-    //         // out and outsize are 0 because we don't know the size yet.
-    //         let result := delegatecall(gas(), implementation, 0, calldatasize(), 0, 0)
-
-    //         // Copy the returned data.
-    //         returndatacopy(0, 0, returndatasize())
-
-    //         switch result
-    //         // delegatecall returns 0 on error.
-    //         case 0 {
-    //             revert(0, returndatasize())
-    //         }
-    //         default {
-    //             return(0, returndatasize())
-    //         }
-    //     }
-    // }
 
     /**
      * @dev Receive function to accept ETH

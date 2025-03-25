@@ -5,49 +5,56 @@ set -e
 RPC_URL="http://localhost:8545"
 PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
-# Anvil's deterministic addresses
+# Set contract artifact paths
+# Simple paths relative to the script location
+CONFIG_ARTIFACT="./out/ContextConfig.sol/ContextConfig.json"
+PROXY_ARTIFACT="../context-proxy/out/ContextProxy.sol/ContextProxy.json"
+MOCK_ARTIFACT="../context-proxy/mock/out/MockExternalContract.sol/MockExternalContract.json"
+
+# Verify artifacts exist
+if [ ! -f "$CONFIG_ARTIFACT" ] || [ ! -f "$PROXY_ARTIFACT" ] || [ ! -f "$MOCK_ARTIFACT" ]; then
+    echo "Error: Ethereum contract artifacts not found."
+    echo "Please run the download-contracts.sh script first or check paths:"
+    echo "- $CONFIG_ARTIFACT"
+    echo "- $PROXY_ARTIFACT"
+    echo "- $MOCK_ARTIFACT"
+    exit 1
+fi
+
+# Anvil's deterministic addresses (from default mnemonic)
 DEPLOYER_ADDRESS="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+# First contract deployed by this address will be at:
 CONTEXT_CONFIG_ADDRESS="0x5FbDB2315678afecb367f032d93F642f64180aa3"
+# Second contract will be at:
 MOCK_CONTRACT_ADDRESS="0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 
-# Get absolute paths
-cd ..  # Move up to project root
-PROJECT_ROOT=$(pwd)
-CONFIG_DIR="$PROJECT_ROOT/context-config"
-PROXY_DIR="$PROJECT_ROOT/context-proxy"
-MOCK_DIR="$PROJECT_ROOT/context-proxy/mock"
+# Start Anvil in the background with &
+echo "Starting Anvil..."
+anvil --host 0.0.0.0 --port 8545 &
+ANVIL_PID=$!
 
-# Start Anvil
-start_anvil() {
-    echo "Starting Anvil..."
-    anvil --host 0.0.0.0 --port 8545 &
-    ANVIL_PID=$!
-    sleep 3
-    trap "echo 'Shutting down Anvil...'; kill $ANVIL_PID" EXIT
-}
+# Give Anvil a moment to start up
+sleep 2
 
-# Deploy contracts
-deploy_contracts() {
-    # Deploy ContextConfig
-    CONFIG_BYTECODE=$(jq -r .bytecode "$CONFIG_DIR/out/ContextConfig.sol/ContextConfig.json")
-    cast send --create --bytecode "$CONFIG_BYTECODE" --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-    echo "ContextConfig deployed at: $CONTEXT_CONFIG_ADDRESS"
-    
-    # Get and set ContextProxy bytecode
-    PROXY_BYTECODE=$(jq -r .bytecode "$PROXY_DIR/out/ContextProxy.sol/ContextProxy.json")
-    cast send $CONTEXT_CONFIG_ADDRESS "setProxyCode(bytes)" "$PROXY_BYTECODE" --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-    echo "Proxy code set in ContextConfig"
-    
-    # Deploy MockExternalContract
-    MOCK_BYTECODE=$(jq -r .bytecode "$MOCK_DIR/out/MockExternalContract.sol/MockExternalContract.json")
-    cast send --create --bytecode "$MOCK_BYTECODE" --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-    echo "MockExternalContract deployed at: $MOCK_CONTRACT_ADDRESS"
-}
+# Deploy ContextConfig
+echo "Deploying ContextConfig..."
+BYTECODE=$(jq -r '.bytecode.object' "$CONFIG_ARTIFACT")
+ENCODED_ARGS=$(cast abi-encode "constructor(address)" $DEPLOYER_ADDRESS)
+ENCODED_ARGS=${ENCODED_ARGS#0x}
 
-# Main execution
-echo "Starting deployment process..."
-start_anvil
-deploy_contracts
-echo "Deployment completed successfully!"
-echo "Anvil is running. Press Ctrl+C to stop."
-wait $ANVIL_PID
+DEPLOY_BYTECODE="${BYTECODE}${ENCODED_ARGS}"
+
+# Deploy ContextConfig
+cast send --private-key $PRIVATE_KEY --rpc-url $RPC_URL --create $DEPLOY_BYTECODE
+# Get proxy bytecode
+PROXY_BYTECODE=$(jq -r '.bytecode.object' "$PROXY_ARTIFACT")
+# Set proxy code
+cast send $CONTEXT_CONFIG_ADDRESS "setProxyCode(bytes)" $PROXY_BYTECODE --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+# Deploy MockExternalContract
+echo "Deploying MockExternalContract..."
+MOCK_BYTECODE=$(jq -r '.bytecode.object' "$MOCK_ARTIFACT")
+cast send --private-key $PRIVATE_KEY --rpc-url $RPC_URL --create $MOCK_BYTECODE
+
+echo "Anvil is running in the background on port 8545"
+echo "To stop it, run: pkill -f anvil"
