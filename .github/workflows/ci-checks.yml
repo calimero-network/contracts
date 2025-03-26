@@ -54,6 +54,11 @@ jobs:
 
           wasm-opt --version
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
       - name: Build
         run: |
           ./scripts/build-rust.sh
