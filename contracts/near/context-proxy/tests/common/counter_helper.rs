@@ -4,7 +4,7 @@ use near_workspaces::{Contract, Worker};
 
 use super::deploy_contract;
 
-const COUNTER_WASM: &str = "../test-counter/res/calimero_test_counter_near.wasm";
+const COUNTER_WASM: &str = "../context-proxy/mock/res/calimero_mock_external_near.wasm";
 
 #[derive(Clone)]
 pub struct CounterContractHelper {
