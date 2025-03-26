@@ -651,31 +651,31 @@ contract ContextProxyTest is Test {
 
     function testGetterFunctions() public {
         bytes32 proposalId = keccak256("test-getter-proposal");
-        
+
         // Create a proposal first
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
             kind: ContextProxy.ProposalActionKind.SetContextValue,
             data: abi.encode("test_key", "test_value")
         });
-        
+
         submitProposal(proposalId, member1Id, member1PrivateKey, actions);
-        
+
         // Test all getters
         assertEq(proxy.getNumApprovals(), 3); // Default is 3
         assertEq(proxy.getProposalCount(), 1);
-        
+
         ContextProxy.ProposalWithApprovals memory confirmations = proxy.getConfirmationsCount(proposalId);
         assertEq(confirmations.numApprovals, 1); // Author auto-approves
-        
+
         bytes32[] memory approvers = proxy.proposalApprovers(proposalId);
         assertEq(approvers.length, 1);
         assertEq(approvers[0], member1Id);
-        
+
         ContextProxy.ProposalApprovalWithSigner[] memory approvals = proxy.proposalApprovalsWithSigner(proposalId);
         assertEq(approvals.length, 1);
         assertEq(approvals[0].userId, member1Id);
-        
+
         // Test paginated proposals
         ContextProxy.Proposal[] memory proposals = proxy.getProposals(0, 10);
         assertEq(proposals.length, 1);
