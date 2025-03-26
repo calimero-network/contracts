@@ -182,7 +182,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-${{ matrix.protocol }}
+          name: artifacts-rust
           path: artifacts/*
           retention-days: 2
 
@@ -233,7 +233,7 @@ jobs:
     name: Release
     if: needs.prepare.outputs.release_required == 'true'
     runs-on: ubuntu-latest
-    needs: [build-rust, build-solidity]
+    needs: [prepare, build-rust, build-solidity]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
