@@ -13,7 +13,7 @@ contract MockExternalContractScript is Script {
         vm.startBroadcast();
 
         config = new MockExternalContract();
-        
+
         console.log("MockExternalContract deployed at:", address(config));
 
         vm.stopBroadcast();

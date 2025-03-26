@@ -6,7 +6,6 @@ pragma solidity ^0.8.13;
  * @dev Contract for managing context configurations, members, and capabilities
  */
 contract ContextConfig {
-
     struct Guard {
         bytes32[] privileged;
         uint32 revision;
@@ -15,13 +14,10 @@ contract ContextConfig {
     struct Context {
         Guard applicationGuard;
         Application application;
-        
         Guard membersGuard;
         bytes32[] members;
-        
         Guard proxyGuard;
         address proxyAddress;
-        
         mapping(bytes32 => uint64) memberNonces;
     }
 
@@ -63,7 +59,8 @@ contract ContextConfig {
     }
 
     enum RequestKind {
-        Context  // Wraps ContextRequest
+        Context // Wraps ContextRequest
+
     }
 
     enum Capability {
@@ -73,13 +70,14 @@ contract ContextConfig {
     }
 
     enum ContextRequestKind {
-        Add,               // (bytes32 authorId, Application application)
-        AddMembers,        // (bytes32[] newMembers)
-        RemoveMembers,     // (bytes32[] membersToRemove)
-        AddCapability,     // (bytes32 memberId, Capability capability)
-        RevokeCapability,  // (bytes32 memberId, Capability capability)
-        UpdateProxy,       // (no data needed, deploys proxy if not already deployed)
-        UpdateApplication  // (Application newApplication)
+        Add, // (bytes32 authorId, Application application)
+        AddMembers, // (bytes32[] newMembers)
+        RemoveMembers, // (bytes32[] membersToRemove)
+        AddCapability, // (bytes32 memberId, Capability capability)
+        RevokeCapability, // (bytes32 memberId, Capability capability)
+        UpdateProxy, // (no data needed, deploys proxy if not already deployed)
+        UpdateApplication // (Application newApplication)
+
     }
 
     struct ContextRequest {
@@ -89,8 +87,8 @@ contract ContextConfig {
     }
 
     struct Request {
-        bytes32 signerId;    // ECDSA public key
-        bytes32 userId;      // Ed25519 public key
+        bytes32 signerId; // ECDSA public key
+        bytes32 userId; // Ed25519 public key
         uint64 nonce;
         RequestKind kind;
         bytes data;
@@ -135,34 +133,26 @@ contract ContextConfig {
      * @param v The v value of the signature
      * @return Whether the request is authorized
      */
-    function verifyAndAuthorize(
-        Request calldata request,
-        bytes32 r,
-        bytes32 s,
-        uint8 v
-    ) internal returns (bool) {
+    function verifyAndAuthorize(Request calldata request, bytes32 r, bytes32 s, uint8 v) internal returns (bool) {
         // Verify signature
         bytes32 messageHash = keccak256(abi.encode(request));
-        
+
         // Get the Ethereum signed message hash
-        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked(
-            "\x19Ethereum Signed Message:\n32",
-            messageHash
-        ));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
 
         // Verify the signature using ECDSA key with ethSignedMessageHash
         address signer = ecrecover(ethSignedMessageHash, v, r, s);
-        
+
         // Convert signer address to bytes32 for comparison
         bytes32 signerAsBytes32 = bytes32(uint256(uint160(signer)));
 
         if (signer == address(0) || signerAsBytes32 != request.signerId) {
             revert InvalidSignature();
         }
-        
+
         // Decode context request once to avoid multiple decoding operations
         ContextRequest memory contextRequest = abi.decode(request.data, (ContextRequest));
-        
+
         // For initial context creation, we don't need to check authorization
         if (contextRequest.kind == ContextRequestKind.Add) {
             return true;
@@ -183,7 +173,7 @@ contract ContextConfig {
 
         // Handle different request types
         ContextRequestKind kind = contextRequest.kind;
-        
+
         // For capability management, check if user is authorized
         if (kind == ContextRequestKind.AddCapability || kind == ContextRequestKind.RevokeCapability) {
             return isAuthorized(request.userId, contextRequest.contextId);
@@ -212,8 +202,8 @@ contract ContextConfig {
     function isAuthorized(bytes32 userId, bytes32 contextId) internal view returns (bool) {
         bytes32[] storage privileged = contexts[contextId].membersGuard.privileged;
         uint256 length = privileged.length;
-        
-        for (uint i = 0; i < length; i++) {
+
+        for (uint256 i = 0; i < length; i++) {
             if (privileged[i] == userId) {
                 return true;
             }
@@ -227,73 +217,34 @@ contract ContextConfig {
      * @return Whether the request was successful
      */
     function mutate(SignedRequest calldata request) external returns (bool) {
-        
-        if (!verifyAndAuthorize(
-            request.payload,
-            request.r,
-            request.s,
-            request.v
-        )) {
+        if (!verifyAndAuthorize(request.payload, request.r, request.s, request.v)) {
             revert InvalidSignature();
         }
 
         if (request.payload.kind == RequestKind.Context) {
             ContextRequest memory contextRequest = abi.decode(request.payload.data, (ContextRequest));
             if (contextRequest.kind == ContextRequestKind.Add) {
-                (bytes32 decodedAuthorId, Application memory app) = abi.decode(
-                    contextRequest.data,
-                    (bytes32, Application)
-                );
+                (bytes32 decodedAuthorId, Application memory app) =
+                    abi.decode(contextRequest.data, (bytes32, Application));
                 return addContext(decodedAuthorId, contextRequest.contextId, app);
-            }
-            else if (contextRequest.kind == ContextRequestKind.AddMembers) {
+            } else if (contextRequest.kind == ContextRequestKind.AddMembers) {
                 bytes32[] memory newMembers = abi.decode(contextRequest.data, (bytes32[]));
 
-                return addMembers(
-                    contextRequest.contextId,
-                    newMembers
-                );
-            }
-            else if (contextRequest.kind == ContextRequestKind.RemoveMembers) {
+                return addMembers(contextRequest.contextId, newMembers);
+            } else if (contextRequest.kind == ContextRequestKind.RemoveMembers) {
                 bytes32[] memory membersToRemove = abi.decode(contextRequest.data, (bytes32[]));
-                return removeMembers(
-                    contextRequest.contextId,
-                    membersToRemove
-                );
-            }
-            else if (contextRequest.kind == ContextRequestKind.AddCapability) {
-                (bytes32 memberId, Capability capability) = abi.decode(
-                    contextRequest.data,
-                    (bytes32, Capability)
-                );
-                return addCapability(
-                    contextRequest.contextId,
-                    memberId,
-                    capability
-                );
-            }
-            else if (contextRequest.kind == ContextRequestKind.RevokeCapability) {
-                (bytes32 memberId, Capability capability) = abi.decode(
-                    contextRequest.data,
-                    (bytes32, Capability)
-                );
-                return revokeCapability(
-                    contextRequest.contextId,
-                    memberId,
-                    capability
-                );
-            }
-            else if (contextRequest.kind == ContextRequestKind.UpdateProxy) {
-                return updateProxy(
-                    contextRequest.contextId
-                );
-            }
-            else if (contextRequest.kind == ContextRequestKind.UpdateApplication) {
+                return removeMembers(contextRequest.contextId, membersToRemove);
+            } else if (contextRequest.kind == ContextRequestKind.AddCapability) {
+                (bytes32 memberId, Capability capability) = abi.decode(contextRequest.data, (bytes32, Capability));
+                return addCapability(contextRequest.contextId, memberId, capability);
+            } else if (contextRequest.kind == ContextRequestKind.RevokeCapability) {
+                (bytes32 memberId, Capability capability) = abi.decode(contextRequest.data, (bytes32, Capability));
+                return revokeCapability(contextRequest.contextId, memberId, capability);
+            } else if (contextRequest.kind == ContextRequestKind.UpdateProxy) {
+                return updateProxy(contextRequest.contextId);
+            } else if (contextRequest.kind == ContextRequestKind.UpdateApplication) {
                 Application memory newApp = abi.decode(contextRequest.data, (Application));
-                return updateApplication(
-                    contextRequest.contextId,
-                    newApp
-                );
+                return updateApplication(contextRequest.contextId, newApp);
             }
         }
 
@@ -307,11 +258,7 @@ contract ContextConfig {
      * @param app The application
      * @return Whether the context was added
      */
-    function addContext(
-        bytes32 authorId,
-        bytes32 contextId,
-        Application memory app
-    ) internal returns (bool) {
+    function addContext(bytes32 authorId, bytes32 contextId, Application memory app) internal returns (bool) {
         if (contexts[contextId].applicationGuard.revision != 0) {
             revert ContextAlreadyExists();
         }
@@ -320,10 +267,7 @@ contract ContextConfig {
         bytes32[] memory privilegedMembers = new bytes32[](1);
         privilegedMembers[0] = authorId;
 
-        Guard memory guard = Guard({
-            privileged: privilegedMembers,
-            revision: 1
-        });
+        Guard memory guard = Guard({privileged: privilegedMembers, revision: 1});
 
         // Initialize members with Ed25519 public key
         bytes32[] memory contextMembers = new bytes32[](1);
@@ -361,11 +305,11 @@ contract ContextConfig {
      */
     function application(bytes32 contextId) external view returns (Application memory) {
         Context storage context = contexts[contextId];
-        
+
         if (context.applicationGuard.revision == 0) {
             revert ContextNotFound();
         }
-        
+
         return context.application;
     }
 
@@ -375,28 +319,25 @@ contract ContextConfig {
      * @param newMembers The new members
      * @return Whether the members were added
      */
-    function addMembers(
-        bytes32 contextId,
-        bytes32[] memory newMembers
-    ) internal returns (bool) {
+    function addMembers(bytes32 contextId, bytes32[] memory newMembers) internal returns (bool) {
         Context storage context = contexts[contextId];
-        
+
         // Cache array length to save gas
         uint256 membersLength = context.members.length;
-        
+
         // Add new members
-        for (uint i = 0; i < newMembers.length; i++) {
+        for (uint256 i = 0; i < newMembers.length; i++) {
             bytes32 newMember = newMembers[i];
             bool alreadyMember = false;
-            
+
             // Check if already a member
-            for (uint j = 0; j < membersLength; j++) {
+            for (uint256 j = 0; j < membersLength; j++) {
                 if (context.members[j] == newMember) {
                     alreadyMember = true;
                     break;
                 }
             }
-            
+
             if (!alreadyMember) {
                 context.members.push(newMember);
                 context.memberNonces[newMember] = 0;
@@ -407,7 +348,7 @@ contract ContextConfig {
         unchecked {
             context.membersGuard.revision++;
         }
-        
+
         emit MembersAdded(contextId, newMembers);
         return true;
     }
@@ -418,18 +359,15 @@ contract ContextConfig {
      * @param membersToRemove The members to remove
      * @return Whether the members were removed
      */
-    function removeMembers(
-        bytes32 contextId,
-        bytes32[] memory membersToRemove
-    ) internal returns (bool) {
+    function removeMembers(bytes32 contextId, bytes32[] memory membersToRemove) internal returns (bool) {
         Context storage context = contexts[contextId];
 
         // Remove members
-        for (uint i = 0; i < membersToRemove.length; i++) {
+        for (uint256 i = 0; i < membersToRemove.length; i++) {
             bytes32 memberToRemove = membersToRemove[i];
-            
+
             // Find and remove member
-            for (uint j = 0; j < context.members.length; j++) {
+            for (uint256 j = 0; j < context.members.length; j++) {
                 if (context.members[j] == memberToRemove) {
                     // Move last element to removed position (if not last)
                     if (j != context.members.length - 1) {
@@ -446,7 +384,7 @@ contract ContextConfig {
         unchecked {
             context.membersGuard.revision++;
         }
-        
+
         emit MembersRemoved(contextId, membersToRemove);
         return true;
     }
@@ -458,11 +396,7 @@ contract ContextConfig {
      * @param length The length
      * @return The members
      */
-    function members(
-        bytes32 contextId,
-        uint256 offset,
-        uint256 length
-    ) external view returns (bytes32[] memory) {
+    function members(bytes32 contextId, uint256 offset, uint256 length) external view returns (bytes32[] memory) {
         Context storage context = contexts[contextId];
         if (context.applicationGuard.revision == 0) {
             revert ContextNotFound();
@@ -475,12 +409,12 @@ contract ContextConfig {
 
         uint256 available = context.members.length - offset;
         uint256 resultLength = available < length ? available : length;
-        
+
         bytes32[] memory result = new bytes32[](resultLength);
         for (uint256 i = 0; i < resultLength; i++) {
             result[i] = context.members[offset + i];
         }
-        
+
         return result;
     }
 
@@ -491,11 +425,7 @@ contract ContextConfig {
      * @param capability The capability
      * @return Whether the user has the capability
      */
-    function hasCapability(
-        bytes32 userId,
-        bytes32 contextId,
-        Capability capability
-    ) internal view returns (bool) {
+    function hasCapability(bytes32 userId, bytes32 contextId, Capability capability) internal view returns (bool) {
         Context storage context = contexts[contextId];
         if (context.applicationGuard.revision == 0) {
             return false;
@@ -513,7 +443,7 @@ contract ContextConfig {
             return false;
         }
 
-        for (uint i = 0; i < privileged.length; i++) {
+        for (uint256 i = 0; i < privileged.length; i++) {
             if (privileged[i] == userId) {
                 return true;
             }
@@ -528,23 +458,25 @@ contract ContextConfig {
      * @param capability The capability
      * @return Whether the capability was added
      */
-    function addCapability(
-        bytes32 contextId,
-        bytes32 memberId,
-        Capability capability
-    ) internal returns (bool) {
+    function addCapability(bytes32 contextId, bytes32 memberId, Capability capability) internal returns (bool) {
         Context storage context = contexts[contextId];
 
         // Add capability
         if (capability == Capability.ManageApplication) {
             context.applicationGuard.privileged.push(memberId);
-            unchecked { context.applicationGuard.revision++; }
+            unchecked {
+                context.applicationGuard.revision++;
+            }
         } else if (capability == Capability.ManageMembers) {
             context.membersGuard.privileged.push(memberId);
-            unchecked { context.membersGuard.revision++; }
+            unchecked {
+                context.membersGuard.revision++;
+            }
         } else if (capability == Capability.Proxy) {
             context.proxyGuard.privileged.push(memberId);
-            unchecked { context.proxyGuard.revision++; }
+            unchecked {
+                context.proxyGuard.revision++;
+            }
         }
 
         emit CapabilityAdded(contextId, memberId, capability);
@@ -558,29 +490,31 @@ contract ContextConfig {
      * @param capability The capability
      * @return Whether the capability was revoked
      */
-    function revokeCapability(
-        bytes32 contextId,
-        bytes32 memberId,
-        Capability capability
-    ) internal returns (bool) {
+    function revokeCapability(bytes32 contextId, bytes32 memberId, Capability capability) internal returns (bool) {
         Context storage context = contexts[contextId];
 
         // Remove capability
         bytes32[] storage privileged;
         if (capability == Capability.ManageApplication) {
             privileged = context.applicationGuard.privileged;
-            unchecked { context.applicationGuard.revision++; }
+            unchecked {
+                context.applicationGuard.revision++;
+            }
         } else if (capability == Capability.ManageMembers) {
             privileged = context.membersGuard.privileged;
-            unchecked { context.membersGuard.revision++; }
+            unchecked {
+                context.membersGuard.revision++;
+            }
         } else if (capability == Capability.Proxy) {
             privileged = context.proxyGuard.privileged;
-            unchecked { context.proxyGuard.revision++; }
+            unchecked {
+                context.proxyGuard.revision++;
+            }
         } else {
             revert InvalidRequest();
         }
 
-        for (uint i = 0; i < privileged.length; i++) {
+        for (uint256 i = 0; i < privileged.length; i++) {
             if (privileged[i] == memberId) {
                 // Move last element to removed position (if not last)
                 if (i != privileged.length - 1) {
@@ -602,7 +536,7 @@ contract ContextConfig {
      * @return Whether the user has the privilege
      */
     function hasPrivilege(bytes32[] memory privileged, bytes32 userId) internal pure returns (bool) {
-        for (uint i = 0; i < privileged.length; i++) {
+        for (uint256 i = 0; i < privileged.length; i++) {
             if (privileged[i] == userId) {
                 return true;
             }
@@ -618,7 +552,7 @@ contract ContextConfig {
      * @return Whether the user is in the array
      */
     function isUserInArray(bytes32[] memory arr, uint256 length, bytes32 user) internal pure returns (bool) {
-        for (uint i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (arr[i] == user) return true;
         }
         return false;
@@ -630,10 +564,11 @@ contract ContextConfig {
      * @param identities The identities
      * @return The user capabilities
      */
-    function privileges(
-        bytes32 contextId,
-        bytes32[] calldata identities
-    ) external view returns (UserCapabilities[] memory) {
+    function privileges(bytes32 contextId, bytes32[] calldata identities)
+        external
+        view
+        returns (UserCapabilities[] memory)
+    {
         Context storage context = contexts[contextId];
         if (context.applicationGuard.revision == 0) {
             revert ContextNotFound();
@@ -664,25 +599,22 @@ contract ContextConfig {
         // If no specific identities requested, check all privileged users
         if (identities.length == 0) {
             // First collect all unique users into an array
-            bytes32[] memory uniqueUsers = new bytes32[](
-                applicationPrivileged.length + 
-                membersPrivileged.length + 
-                proxyPrivileged.length
-            );
+            bytes32[] memory uniqueUsers =
+                new bytes32[](applicationPrivileged.length + membersPrivileged.length + proxyPrivileged.length);
             uint256 uniqueCount = 0;
 
             // Collect unique users
-            for (uint i = 0; i < applicationPrivileged.length; i++) {
+            for (uint256 i = 0; i < applicationPrivileged.length; i++) {
                 if (!isUserInArray(uniqueUsers, uniqueCount, applicationPrivileged[i])) {
                     uniqueUsers[uniqueCount++] = applicationPrivileged[i];
                 }
             }
-            for (uint i = 0; i < membersPrivileged.length; i++) {
+            for (uint256 i = 0; i < membersPrivileged.length; i++) {
                 if (!isUserInArray(uniqueUsers, uniqueCount, membersPrivileged[i])) {
                     uniqueUsers[uniqueCount++] = membersPrivileged[i];
                 }
             }
-            for (uint i = 0; i < proxyPrivileged.length; i++) {
+            for (uint256 i = 0; i < proxyPrivileged.length; i++) {
                 if (!isUserInArray(uniqueUsers, uniqueCount, proxyPrivileged[i])) {
                     uniqueUsers[uniqueCount++] = proxyPrivileged[i];
                 }
@@ -690,20 +622,20 @@ contract ContextConfig {
 
             // Create result array with actual size
             UserCapabilities[] memory result = new UserCapabilities[](uniqueCount);
-            
+
             // Fill in capabilities for each unique user
-            for (uint i = 0; i < uniqueCount; i++) {
+            for (uint256 i = 0; i < uniqueCount; i++) {
                 result[i].userId = uniqueUsers[i];
-                
+
                 // Count capabilities first
                 uint256 capCount = 0;
                 if (hasPrivilege(applicationPrivileged, uniqueUsers[i])) capCount++;
                 if (hasPrivilege(membersPrivileged, uniqueUsers[i])) capCount++;
                 if (hasPrivilege(proxyPrivileged, uniqueUsers[i])) capCount++;
-                
+
                 // Allocate exact size array
                 result[i].capabilities = new Capability[](capCount);
-                
+
                 // Fill capabilities
                 uint256 capIndex = 0;
                 if (hasPrivilege(applicationPrivileged, uniqueUsers[i])) {
@@ -716,23 +648,23 @@ contract ContextConfig {
                     result[i].capabilities[capIndex++] = Capability.Proxy;
                 }
             }
-            
+
             return result;
         } else {
             // Check specific identities
             UserCapabilities[] memory result = new UserCapabilities[](identities.length);
-            for (uint i = 0; i < identities.length; i++) {
+            for (uint256 i = 0; i < identities.length; i++) {
                 result[i].userId = identities[i];
-                
+
                 // Count capabilities first
                 uint256 capCount = 0;
                 if (hasPrivilege(applicationPrivileged, identities[i])) capCount++;
                 if (hasPrivilege(membersPrivileged, identities[i])) capCount++;
                 if (hasPrivilege(proxyPrivileged, identities[i])) capCount++;
-                
+
                 // Allocate exact size array
                 result[i].capabilities = new Capability[](capCount);
-                
+
                 // Fill capabilities
                 uint256 capIndex = 0;
                 if (hasPrivilege(applicationPrivileged, identities[i])) {
@@ -778,8 +710,8 @@ contract ContextConfig {
         if (context.applicationGuard.revision == 0) {
             return false;
         }
-        
-        for (uint i = 0; i < context.members.length; i++) {
+
+        for (uint256 i = 0; i < context.members.length; i++) {
             if (context.members[i] == userId) {
                 return true;
             }
@@ -807,10 +739,10 @@ contract ContextConfig {
         if (msg.sender != owner) {
             revert Unauthorized();
         }
-        
+
         proxyBytecode = newBytecode;
         proxyCodeHash = keccak256(newBytecode);
-        
+
         emit ProxyCodeUpdated(proxyCodeHash);
         return true;
     }
@@ -824,35 +756,32 @@ contract ContextConfig {
         if (proxyBytecode.length == 0) {
             revert ProxyBytecodeNotSet();
         }
-        
+
         // Get the current context
         Context storage context = contexts[contextId];
-        
+
         // For context creation or updates, use a different salt based on the revision
         uint32 revisionToUse = context.applicationGuard.revision == 0 ? 1 : context.proxyGuard.revision + 1;
-        
+
         // Create a unique salt using the contextId and revision
         bytes32 salt = keccak256(abi.encodePacked(contextId, revisionToUse, block.timestamp));
-        
+
         // Encode constructor parameters
         bytes memory constructorArgs = abi.encode(contextId, address(this));
-        
+
         // Concatenate bytecode and constructor args
-        bytes memory bytecode = bytes.concat(
-            proxyBytecode,
-            constructorArgs
-        );
-        
+        bytes memory bytecode = bytes.concat(proxyBytecode, constructorArgs);
+
         // Deploy the proxy
         address proxyAddress;
         assembly {
             proxyAddress := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
-        
+
         if (proxyAddress == address(0)) {
             revert ProxyDeploymentFailed();
         }
-        
+
         return proxyAddress;
     }
 
@@ -871,15 +800,14 @@ contract ContextConfig {
      * @param app The new application
      * @return Whether the operation was successful
      */
-    function updateApplication(
-        bytes32 contextId,
-        Application memory app
-    ) internal returns (bool) {
+    function updateApplication(bytes32 contextId, Application memory app) internal returns (bool) {
         Context storage context = contexts[contextId];
-        
+
         context.application = app;
-        unchecked { context.applicationGuard.revision++; }
-        
+        unchecked {
+            context.applicationGuard.revision++;
+        }
+
         emit ApplicationUpdated(contextId);
         return true;
     }
@@ -889,29 +817,27 @@ contract ContextConfig {
      * @param contextId The context ID
      * @return Whether the operation was successful
      */
-    function updateProxy(
-        bytes32 contextId
-    ) internal returns (bool) {
+    function updateProxy(bytes32 contextId) internal returns (bool) {
         Context storage context = contexts[contextId];
-        
+
         if (proxyBytecode.length == 0) {
             revert ProxyBytecodeNotSet();
         }
-        
+
         address proxyAddress = deployProxy(contextId);
         if (proxyAddress == address(0)) {
             revert ProxyDeploymentFailed();
         }
-        
+
         // Update the proxy address in storage
         context.proxyAddress = proxyAddress;
-        
+
         unchecked {
             context.proxyGuard.revision++;
         }
-        
+
         emit ProxyUpdated(contextId, proxyAddress);
         emit ProxyDeployed(contextId, proxyAddress);
         return true;
     }
-} 
+}

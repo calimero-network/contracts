@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "forge-std/console.sol";
 // Interface for the context config contract - simplified
+
 interface IContextConfig {
     function hasMember(bytes32 contextId, bytes32 userId) external view returns (bool);
 }
@@ -19,10 +20,10 @@ contract ContextProxy {
     }
 
     struct Request {
-        bytes32 signerId;    // ECDSA public key
-        bytes32 userId;      // Ed25519 public key
+        bytes32 signerId; // ECDSA public key
+        bytes32 userId; // Ed25519 public key
         RequestKind kind;
-        bytes data;          // Encoded proposal or approval data
+        bytes data; // Encoded proposal or approval data
     }
 
     struct SignedRequest {
@@ -110,28 +111,22 @@ contract ContextProxy {
         numApprovals = 3;
         activeProposalsLimit = 10;
     }
- 
+
     /**
      * @dev Processes a signed mutation request for the proxy contract
      * @param signedRequest The signed request containing the mutation action
      * @return Optional proposal with approvals if not executed
      */
-    function mutate(
-        SignedRequest calldata signedRequest
-    ) external returns (ProposalWithApprovals memory) {
-
+    function mutate(SignedRequest calldata signedRequest) external returns (ProposalWithApprovals memory) {
         // Verify signature and authorization
         bytes32 messageHash = keccak256(abi.encode(signedRequest.payload));
-        
+
         // Get the Ethereum signed message hash
-        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked(
-            "\x19Ethereum Signed Message:\n32",
-            messageHash
-        ));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
 
         // Verify the signature using ECDSA key with ethSignedMessageHash
         address signer = ecrecover(ethSignedMessageHash, signedRequest.v, signedRequest.r, signedRequest.s);
-        
+
         // Convert signer address to bytes32 for comparison
         bytes32 signerAsBytes32 = bytes32(uint256(uint160(signer)));
 
@@ -139,22 +134,21 @@ contract ContextProxy {
             revert InvalidSignature();
         }
 
-
         // Check if user is a member
         if (!isMember(signedRequest.payload.userId)) {
             revert Unauthorized();
         }
-
 
         // Process based on request kind
         if (signedRequest.payload.kind == RequestKind.Propose) {
             Proposal memory proposal = abi.decode(signedRequest.payload.data, (Proposal));
             return internalCreateProposal(proposal);
         } else if (signedRequest.payload.kind == RequestKind.Approve) {
-            ProposalApprovalWithSigner memory approval = abi.decode(signedRequest.payload.data, (ProposalApprovalWithSigner));
+            ProposalApprovalWithSigner memory approval =
+                abi.decode(signedRequest.payload.data, (ProposalApprovalWithSigner));
             return internalApproveProposal(approval);
         }
-        
+
         revert InvalidAction();
     }
 
@@ -163,37 +157,29 @@ contract ContextProxy {
      * @param proposal The proposal to be created
      * @return Optional proposal with approvals if not executed
      */
-    function internalCreateProposal(
-        Proposal memory proposal
-    ) internal returns (ProposalWithApprovals memory) {
-
+    function internalCreateProposal(Proposal memory proposal) internal returns (ProposalWithApprovals memory) {
         // Validate proposal
         if (proposal.actions.length == 0) {
             revert InvalidAction();
         }
 
-
         // Handle delete action if present
-        for (uint i = 0; i < proposal.actions.length; i++) {
+        for (uint256 i = 0; i < proposal.actions.length; i++) {
             if (proposal.actions[i].kind == ProposalActionKind.DeleteProposal) {
                 bytes32 proposalIdToDelete = abi.decode(proposal.actions[i].data, (bytes32));
 
                 Proposal storage toDelete = proposals[proposalIdToDelete];
-                
+
                 if (toDelete.authorId != proposal.authorId) {
                     revert Unauthorized();
                 }
-                
+
                 removeProposal(proposalIdToDelete);
-                
+
                 // Return empty proposal with approvals
-                return ProposalWithApprovals({
-                    proposalId: bytes32(0),
-                    numApprovals: 0
-                });
+                return ProposalWithApprovals({proposalId: bytes32(0), numApprovals: 0});
             }
         }
-
 
         // Check proposal limit
         uint32 authorProposalCount = numProposalsPk[proposal.authorId];
@@ -201,39 +187,31 @@ contract ContextProxy {
             revert TooManyActiveProposals();
         }
 
-
         // Validate all actions
-        for (uint i = 0; i < proposal.actions.length; i++) {
+        for (uint256 i = 0; i < proposal.actions.length; i++) {
             validateProposalAction(proposal.actions[i]);
         }
-
 
         // Store proposal
         bytes32 proposalId = proposal.id;
         Proposal storage newProposal = proposals[proposalId];
         newProposal.id = proposal.id;
         newProposal.authorId = proposal.authorId;
-        
+
         // Copy actions array element by element
-        for (uint i = 0; i < proposal.actions.length; i++) {
+        for (uint256 i = 0; i < proposal.actions.length; i++) {
             newProposal.actions.push(proposal.actions[i]);
         }
-        
+
         numProposalsPk[proposal.authorId] = authorProposalCount + 1;
-        
+
         // Add to the list of all proposal IDs
         allProposalIds.push(proposalId);
-
 
         emit ProposalCreated(proposalId, proposal.authorId);
 
         // Auto-approve by author
-        return internalApproveProposal(
-            ProposalApprovalWithSigner({
-                proposalId: proposalId,
-                userId: proposal.authorId
-            })
-        );
+        return internalApproveProposal(ProposalApprovalWithSigner({proposalId: proposalId, userId: proposal.authorId}));
     }
 
     /**
@@ -241,13 +219,13 @@ contract ContextProxy {
      * @param approval The approval details including proposal ID and signer
      * @return Optional proposal with approvals if not executed
      */
-    function internalApproveProposal(
-        ProposalApprovalWithSigner memory approval
-    ) internal returns (ProposalWithApprovals memory) {
-
+    function internalApproveProposal(ProposalApprovalWithSigner memory approval)
+        internal
+        returns (ProposalWithApprovals memory)
+    {
         bytes32 proposalId = approval.proposalId;
         Proposal storage proposal = proposals[proposalId];
-        
+
         // Check if proposal exists
         if (proposal.id != proposalId) {
             revert ProposalNotFound();
@@ -255,7 +233,7 @@ contract ContextProxy {
 
         // Check if already approved
         bytes32[] storage proposalApprovals = approvals[proposalId];
-        for (uint i = 0; i < proposalApprovals.length; i++) {
+        for (uint256 i = 0; i < proposalApprovals.length; i++) {
             if (proposalApprovals[i] == approval.userId) {
                 revert ProposalAlreadyApproved();
             }
@@ -263,22 +241,16 @@ contract ContextProxy {
 
         // Add approval
         proposalApprovals.push(approval.userId);
-        
+
         emit ProposalApproved(proposalId, approval.userId, uint32(proposalApprovals.length));
 
         // Check if should execute
         if (proposalApprovals.length >= numApprovals) {
             executeProposal(proposalId);
-            return ProposalWithApprovals({
-                proposalId: bytes32(0),
-                numApprovals: 0
-            });
+            return ProposalWithApprovals({proposalId: bytes32(0), numApprovals: 0});
         }
 
-        return ProposalWithApprovals({
-            proposalId: proposalId,
-            numApprovals: uint32(proposalApprovals.length)
-        });
+        return ProposalWithApprovals({proposalId: proposalId, numApprovals: uint32(proposalApprovals.length)});
     }
 
     /**
@@ -296,8 +268,6 @@ contract ContextProxy {
      */
     function validateProposalAction(ProposalAction memory action) internal pure {
         if (action.kind == ProposalActionKind.ExternalFunctionCall) {
-
-
             // Get the data bytes
             bytes memory data = action.data;
 
@@ -324,23 +294,17 @@ contract ContextProxy {
             if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
                 // Skip the first 32 bytes (the pointer) and use the rest
                 actualData = new bytes(data.length - 32);
-                for (uint i = 0; i < data.length - 32; i++) {
+                for (uint256 i = 0; i < data.length - 32; i++) {
                     actualData[i] = data[i + 32];
                 }
 
                 // Attempt the decode on the adjusted data
-                (target, callData, value) = abi.decode(
-                    actualData,
-                    (address, bytes, uint256)
-                );
+                (target, callData, value) = abi.decode(actualData, (address, bytes, uint256));
             } else {
                 // Use the original data
-                (target, callData, value) = abi.decode(
-                    data,
-                    (address, bytes, uint256)
-                );
+                (target, callData, value) = abi.decode(data, (address, bytes, uint256));
             }
-            
+
             // (address target, bytes memory callData,) = abi.decode(
             //     action.data,
             //     (address, bytes, uint256)
@@ -375,20 +339,20 @@ contract ContextProxy {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.id == proposalId) {
             bytes32 authorId = proposal.authorId;
-            
+
             // Delete approvals
             delete approvals[proposalId];
-            
+
             // Delete proposal
             delete proposals[proposalId];
-            
+
             // Update author count
             if (numProposalsPk[authorId] > 0) {
                 numProposalsPk[authorId]--;
             }
-            
+
             // Remove from allProposalIds array
-            for (uint i = 0; i < allProposalIds.length; i++) {
+            for (uint256 i = 0; i < allProposalIds.length; i++) {
                 if (allProposalIds[i] == proposalId) {
                     // Replace with the last element and pop
                     allProposalIds[i] = allProposalIds[allProposalIds.length - 1];
@@ -396,7 +360,7 @@ contract ContextProxy {
                     break;
                 }
             }
-            
+
             emit ProposalDeleted(proposalId);
         }
     }
@@ -415,9 +379,9 @@ contract ContextProxy {
         uint256 actionsLength = proposal.actions.length;
 
         // Execute each action
-        for (uint i = 0; i < actionsLength; i++) {
+        for (uint256 i = 0; i < actionsLength; i++) {
             ProposalAction memory action = proposal.actions[i];
-            
+
             if (action.kind == ProposalActionKind.ExternalFunctionCall) {
                 // Get the data bytes
                 bytes memory data = action.data;
@@ -445,70 +409,59 @@ contract ContextProxy {
                 if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
                     // Skip the first 32 bytes (the pointer) and use the rest
                     actualData = new bytes(data.length - 32);
-                    for (uint i = 0; i < data.length - 32; i++) {
+                    for (uint256 i = 0; i < data.length - 32; i++) {
                         actualData[i] = data[i + 32];
                     }
 
                     // Attempt the decode on the adjusted data
-                    (target, callData, value) = abi.decode(
-                        actualData,
-                        (address, bytes, uint256)
-                    );
+                    (target, callData, value) = abi.decode(actualData, (address, bytes, uint256));
                 } else {
                     // Use the original data
-                    (target, callData, value) = abi.decode(
-                        data,
-                        (address, bytes, uint256)
-                    );
+                    (target, callData, value) = abi.decode(data, (address, bytes, uint256));
                 }
                 // Execute external call
-                (bool success, ) = target.call{value: value}(callData);
+                (bool success,) = target.call{value: value}(callData);
                 if (!success) {
                     revert InvalidAction();
                 }
-                
+
                 emit ExternalCallExecuted(target, bytes4(callData), value);
-            } 
-            else if (action.kind == ProposalActionKind.Transfer) {
+            } else if (action.kind == ProposalActionKind.Transfer) {
                 (address recipient, uint256 amount) = abi.decode(action.data, (address, uint256));
-                
+
                 // Transfer tokens using unchecked for gas optimization
                 bool success;
                 unchecked {
-                    (success, ) = recipient.call{value: amount}("");
+                    (success,) = recipient.call{value: amount}("");
                 }
                 if (!success) {
                     revert InsufficientBalance();
                 }
-                
+
                 emit TokenTransferred(recipient, amount);
-            } 
-            else if (action.kind == ProposalActionKind.SetNumApprovals) {
+            } else if (action.kind == ProposalActionKind.SetNumApprovals) {
                 uint32 newApprovals = abi.decode(action.data, (uint32));
                 uint32 oldApprovals = numApprovals;
                 numApprovals = newApprovals;
-                
+
                 emit NumApprovalsChanged(oldApprovals, newApprovals);
-            } 
-            else if (action.kind == ProposalActionKind.SetActiveProposalsLimit) {
+            } else if (action.kind == ProposalActionKind.SetActiveProposalsLimit) {
                 uint32 newLimit = abi.decode(action.data, (uint32));
                 uint32 oldLimit = activeProposalsLimit;
                 activeProposalsLimit = newLimit;
-                
+
                 emit ActiveProposalsLimitChanged(oldLimit, newLimit);
-            } 
-            else if (action.kind == ProposalActionKind.SetContextValue) {
+            } else if (action.kind == ProposalActionKind.SetContextValue) {
                 (bytes memory key, bytes memory value) = abi.decode(action.data, (bytes, bytes));
                 bool keyExists = contextStorage[key].length > 0;
-                
+
                 if (!keyExists) {
                     contextStorageKeys.push(key);
                 }
                 contextStorage[key] = value;
-                
+
                 emit ContextValueSet(key, value);
-            } 
-            else if (action.kind == ProposalActionKind.DeleteProposal) {
+            } else if (action.kind == ProposalActionKind.DeleteProposal) {
                 bytes32 proposalIdToDelete = abi.decode(action.data, (bytes32));
                 removeProposal(proposalIdToDelete);
             }
@@ -548,18 +501,19 @@ contract ContextProxy {
         // Calculate result size based on available proposals and pagination
         uint32 resultSize = 0;
         if (fromIndex < allProposalIds.length) {
-            resultSize = (uint32(allProposalIds.length) - fromIndex) < limit ? 
-                        (uint32(allProposalIds.length) - fromIndex) : limit;
+            resultSize = (uint32(allProposalIds.length) - fromIndex) < limit
+                ? (uint32(allProposalIds.length) - fromIndex)
+                : limit;
         }
-        
+
         Proposal[] memory result = new Proposal[](resultSize);
-        
+
         // Fill array with paginated results
         for (uint32 i = 0; i < resultSize; i++) {
             bytes32 proposalId = allProposalIds[fromIndex + i];
             result[i] = proposals[proposalId];
         }
-        
+
         return result;
     }
 
@@ -576,16 +530,10 @@ contract ContextProxy {
      */
     function getConfirmationsCount(bytes32 proposalId) external view returns (ProposalWithApprovals memory) {
         if (proposals[proposalId].id != proposalId) {
-            return ProposalWithApprovals({
-                proposalId: bytes32(0),
-                numApprovals: 0
-            });
+            return ProposalWithApprovals({proposalId: bytes32(0), numApprovals: 0});
         }
-        
-        return ProposalWithApprovals({
-            proposalId: proposalId,
-            numApprovals: uint32(approvals[proposalId].length)
-        });
+
+        return ProposalWithApprovals({proposalId: proposalId, numApprovals: uint32(approvals[proposalId].length)});
     }
 
     /**
@@ -600,17 +548,18 @@ contract ContextProxy {
      * @dev Returns detailed approval information for a proposal
      * @param proposalId The ID of the proposal to check
      */
-    function proposalApprovalsWithSigner(bytes32 proposalId) external view returns (ProposalApprovalWithSigner[] memory) {
+    function proposalApprovalsWithSigner(bytes32 proposalId)
+        external
+        view
+        returns (ProposalApprovalWithSigner[] memory)
+    {
         bytes32[] storage proposalApprovals = approvals[proposalId];
         ProposalApprovalWithSigner[] memory result = new ProposalApprovalWithSigner[](proposalApprovals.length);
-        
-        for (uint i = 0; i < proposalApprovals.length; i++) {
-            result[i] = ProposalApprovalWithSigner({
-                proposalId: proposalId,
-                userId: proposalApprovals[i]
-            });
+
+        for (uint256 i = 0; i < proposalApprovals.length; i++) {
+            result[i] = ProposalApprovalWithSigner({proposalId: proposalId, userId: proposalApprovals[i]});
         }
-        
+
         return result;
     }
 
@@ -627,25 +576,29 @@ contract ContextProxy {
      * @param fromIndex Starting index for pagination
      * @param limit Maximum number of entries to return
      */
-    function contextStorageEntries(uint32 fromIndex, uint32 limit) external view returns (bytes[] memory, bytes[] memory) {
+    function contextStorageEntries(uint32 fromIndex, uint32 limit)
+        external
+        view
+        returns (bytes[] memory, bytes[] memory)
+    {
         uint256 resultSize = 0;
-        
+
         // Calculate result size based on available keys and pagination
         if (fromIndex < contextStorageKeys.length) {
-            resultSize = (contextStorageKeys.length - fromIndex) < limit ? 
-                        (contextStorageKeys.length - fromIndex) : limit;
+            resultSize =
+                (contextStorageKeys.length - fromIndex) < limit ? (contextStorageKeys.length - fromIndex) : limit;
         }
-        
+
         bytes[] memory keys = new bytes[](resultSize);
         bytes[] memory values = new bytes[](resultSize);
-        
+
         // Fill arrays with paginated results
         for (uint32 i = 0; i < resultSize; i++) {
             bytes memory key = contextStorageKeys[fromIndex + i];
             keys[i] = key;
             values[i] = contextStorage[key];
         }
-        
+
         return (keys, values);
     }
 
@@ -682,7 +635,7 @@ contract ContextProxy {
         if (msg.sender != contextAddress || contextAddress != contextConfigId) {
             revert Unauthorized();
         }
-        
+
         // Ensure the new implementation is a contract
         if (implementation.code.length == 0) {
             revert("Implementation must be a contract");

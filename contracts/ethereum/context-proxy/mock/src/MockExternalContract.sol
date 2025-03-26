@@ -6,13 +6,13 @@ import "forge-std/console.sol";
 contract MockExternalContract {
     mapping(string => string) private values;
     uint256 public totalDeposits;
-    
+
     // Function that accepts ETH
     function deposit(string memory key, string memory value) external payable {
         values[key] = value;
         totalDeposits += msg.value;
     }
-    
+
     function setValueNoDeposit(string memory key, string memory value) external {
         console.log("Setting value for key:", key);
         console.log("Value being set:", value);
@@ -26,7 +26,7 @@ contract MockExternalContract {
         console.log("Retrieved value:", result);
         return result;
     }
-    
+
     // Function to receive ETH
     receive() external payable {
         totalDeposits += msg.value;
