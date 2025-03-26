@@ -551,7 +551,7 @@ contract ContextConfig {
      * @param user The user
      * @return Whether the user is in the array
      */
-    function isUserInArray(bytes32[] memory arr, uint256 length, bytes32 user) internal pure returns (bool) {
+    function isUserInArray(bytes32[] memory arr, uint256 length, bytes32 user) private pure returns (bool) {
         for (uint256 i = 0; i < length; i++) {
             if (arr[i] == user) return true;
         }

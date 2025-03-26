@@ -409,8 +409,8 @@ contract ContextProxy {
                 if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
                     // Skip the first 32 bytes (the pointer) and use the rest
                     actualData = new bytes(data.length - 32);
-                    for (uint256 i = 0; i < data.length - 32; i++) {
-                        actualData[i] = data[i + 32];
+                    for (uint256 j = 0; j < data.length - 32; j++) {
+                        actualData[j] = data[j + 32];
                     }
 
                     // Attempt the decode on the adjusted data
