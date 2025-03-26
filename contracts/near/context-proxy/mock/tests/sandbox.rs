@@ -3,7 +3,7 @@
 use near_workspaces::network::Sandbox;
 use near_workspaces::{Contract, Worker};
 
-const CONTRACT_WASM: &str = "./res/calimero_test_counter_near.wasm";
+const CONTRACT_WASM: &str = "./res/calimero_mock_external_near.wasm";
 
 async fn deploy_counter_contract(worker: &Worker<Sandbox>) -> eyre::Result<Contract> {
     let wasm = std::fs::read(CONTRACT_WASM)?;
