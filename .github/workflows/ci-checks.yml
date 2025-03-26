@@ -29,13 +29,11 @@ jobs:
           TMPDIR=$(mktemp -d)
           VERSION="0.1.5"
           BINARY="candid-extractor-x86_64-unknown-linux-gnu.tar.gz"
-
           wget -P "$TMPDIR" "https://github.com/dfinity/candid-extractor/releases/download/${VERSION}/${BINARY}"
           tar xzf "$TMPDIR/$BINARY" -C "$TMPDIR"
           mkdir -p "$HOME/.local/bin"
           mv "$TMPDIR/candid-extractor" "$HOME/.local/bin/"
           rm -rf "$TMPDIR"
-
           candid-extractor --version
 
       - name: Install wasm-opt
@@ -43,39 +41,62 @@ jobs:
           TMPDIR=$(mktemp -d)
           VERSION="version_122"
           BINARY="binaryen-$VERSION-x86_64-linux.tar.gz"
-
           wget -P "$TMPDIR" "https://github.com/WebAssembly/binaryen/releases/download/$VERSION/$BINARY"
           tar xzf "$TMPDIR/$BINARY" -C "$TMPDIR"
           mkdir -p "$HOME/.local/bin"
           mv "$TMPDIR/binaryen-$VERSION/bin/"* "$HOME/.local/bin/"
-
-          # Cleanup temporary directory
           rm -rf "$TMPDIR"
-
           wasm-opt --version
 
-      - name: Build
-        run: |
-          ./scripts/build-rust.sh
+      - name: Build Rust
+        run: ./scripts/build-rust.sh
 
       - name: Cargo format
         shell: bash
         run: |
           rustup toolchain install nightly
           rustup component add rustfmt --toolchain nightly
-
           cargo +nightly fmt -- --check
 
       - name: Cargo clippy
-        run: |
-          cargo clippy -- -A warnings
+        run: cargo clippy -- -A warnings
 
-      # Install pocket-ic for ICP Contract tests
       - name: Install PocketIC server
         uses: dfinity/pocketic@main
         with:
           pocket-ic-server-version: "7.0.0"
 
       - name: Cargo test
+        run: cargo test
+
+  solidity:
+    name: Solidity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: forge --version
+
+      - name: Check formatting
         run: |
-          cargo test
+          cd contracts/ethereum/context-config
+          forge fmt --check || { echo "❌ context-config formatting check failed. Run 'forge fmt' to fix"; exit 1; }
+          cd ../context-proxy
+          forge fmt --check || { echo "❌ context-proxy formatting check failed. Run 'forge fmt' to fix"; exit 1; }
+
+      - name: Build and test context-config
+        working-directory: contracts/ethereum/context-config
+        run: |
+          ./build.sh
+          forge test -vvv
+
+      - name: Build and test context-proxy
+        working-directory: contracts/ethereum/context-proxy
+        run: |
+          ./build.sh
+          forge test -vvv

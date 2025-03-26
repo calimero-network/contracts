@@ -172,7 +172,7 @@ fn setup() -> ProxyTestContext {
     // Setup mock external with ledger ID
     let mock_external = pic.create_canister();
     pic.add_cycles(mock_external, 100_000_000_000_000);
-    let mock_external_wasm = std::fs::read("mock/external/res/calimero_mock_external_icp.wasm")
+    let mock_external_wasm = std::fs::read("mock/res/calimero_mock_external_icp.wasm")
         .expect("failed to read mock external wasm");
     // Pass ledger ID during initialization
     let init_args = candid::encode_one(mock_ledger).expect("Failed to encode ledger ID");

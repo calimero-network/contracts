@@ -9,6 +9,11 @@
       "type": "custom",
       "wasm": "https://download.dfinity.systems/ic/aba60ffbc46acfc8990bf4d5685c1360bd7026b9/canisters/ledger-canister.wasm.gz",
       "candid": "https://raw.githubusercontent.com/dfinity/ic/aba60ffbc46acfc8990bf4d5685c1360bd7026b9/rs/ledger_suite/icp/ledger.did"
+    },
+    "mock_external_contract": {
+      "type": "custom",
+      "wasm": "../context-proxy/mock/external/res/calimero_mock_external_icp.wasm",
+      "candid": "../context-proxy/mock/external/res/calimero_mock_external_icp.did"
     }
   },
   "defaults": {

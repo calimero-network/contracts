@@ -7,7 +7,7 @@ echo "Building proxy contract..."
 ./build.sh
 
 echo "Building mock external contract..."
-./mock/external/build.sh
+./mock/build.sh
 
 echo "Building context-config contract..."
 ../context-config/build.sh

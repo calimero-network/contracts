@@ -69,15 +69,6 @@ impl MockExternalContract {
         // Store the key-value pair
         state.storage.set(key.clone(), value.clone());
 
-        // Check if there was a token transfer with this call
-        let token_client = TokenClient::new(&env, &state.token);
-        let contract_address = env.current_contract_address();
-        let balance = token_client.balance(&contract_address);
-
-        if balance > state.total_deposits {
-            state.total_deposits = balance;
-        }
-
         env.storage().instance().set(&STORAGE_KEY, &state);
 
         Ok(value)

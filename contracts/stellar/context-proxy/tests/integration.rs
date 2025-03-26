@@ -28,7 +28,7 @@ mod context_contract {
 // Import mock external contract
 mod mock_external {
     soroban_sdk::contractimport!(
-        file = "../context-proxy/mock_external/res/calimero_mock_external_stellar.wasm"
+        file = "../context-proxy/mock/res/calimero_mock_external_stellar.wasm"
     );
 }
 
@@ -165,7 +165,7 @@ fn deploy_mock_external<'a>(
     xlm_token_address: &Address,
 ) -> (Address, mock_external::Client<'a>) {
     let mock_owner = Address::generate(env);
-    let mock_external_wasm = fs::read("./mock_external/res/calimero_mock_external_stellar.wasm")
+    let mock_external_wasm = fs::read("./mock/res/calimero_mock_external_stellar.wasm")
         .expect("Failed to read mock external WASM file");
     let mock_external_hash = env
         .deployer()
