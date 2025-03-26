@@ -120,10 +120,6 @@ jobs:
     if: needs.prepare.outputs.build_required == 'true'
     runs-on: ubuntu-latest
     needs: prepare
-    strategy:
-      matrix:
-        protocol: ${{ fromJson(needs.prepare.outputs.rust_protocol_matrix) }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -139,7 +135,6 @@ jobs:
           key: release
 
       - name: Install candid-extractor
-        if: matrix.protocol == 'icp'
         run: |
           TMPDIR=$(mktemp -d)
           VERSION="0.1.5"
@@ -167,22 +162,24 @@ jobs:
       - name: Create archive
         run: |
           tmp_dir=$(mktemp -d)
-          for contract in "contracts/${{ matrix.protocol }}"/*; do
-            if [ -d "${contract}" ]; then
-              find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-              if [ -d "${contract}/mock/res" ]; then
-                find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+          for protocol in $(echo '${{ needs.prepare.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
+            for contract in "contracts/${protocol}"/*; do
+              if [ -d "${contract}" ]; then
+                find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                if [ -d "${contract}/mock/res" ]; then
+                  find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+                fi
               fi
-            fi
+            done
           done
           mkdir -p artifacts
-          tar -czf "artifacts/${{ matrix.protocol }}.tar.gz" -C "$tmp_dir" .
+          tar -czf "artifacts/rust.tar.gz" -C "$tmp_dir" .
           rm -rf "$tmp_dir"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-${{ matrix.protocol }}
+          name: artifacts-rust
           path: artifacts/*
           retention-days: 2
 
