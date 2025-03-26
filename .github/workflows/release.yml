@@ -157,14 +157,7 @@ jobs:
           rm -rf "$TMPDIR"
 
       - name: Build Rust contracts
-        run: |
-          for contract in "contracts/${{ matrix.protocol }}"/*; do
-            if [ -d "${contract}" ]; then
-              cd "${contract}"
-              cargo build --target wasm32-unknown-unknown --release
-              cd -
-            fi
-          done
+        run: ./scripts/build-rust.sh
 
       - name: Create archive
         run: |
