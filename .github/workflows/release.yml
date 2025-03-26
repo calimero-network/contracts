@@ -108,6 +108,7 @@ jobs:
             echo "This is not a master branch or a release PR"
             echo "build_required=false" >> $GITHUB_OUTPUT
             echo "release_required=false" >> $GITHUB_OUTPUT
+            echo "version=dev" >> $GITHUB_OUTPUT
           fi
 
   build-rust:
