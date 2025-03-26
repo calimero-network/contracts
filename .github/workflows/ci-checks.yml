@@ -45,6 +45,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           mv "$TMPDIR/binaryen-$VERSION/bin/"* "$HOME/.local/bin/"
           rm -rf "$TMPDIR"
+          wasm-opt --version
 
       - name: Build Rust
         run: ./scripts/build-rust.sh
