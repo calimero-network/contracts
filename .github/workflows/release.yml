@@ -123,6 +123,8 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
 
       - name: Setup rust cache
         uses: Swatinem/rust-cache@v2
@@ -139,6 +141,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           mv "$TMPDIR/candid-extractor" "$HOME/.local/bin/"
           rm -rf "$TMPDIR"
+          candid-extractor --version
 
       - name: Install wasm-opt
         run: |
@@ -150,14 +153,16 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           mv "$TMPDIR/binaryen-$VERSION/bin/"* "$HOME/.local/bin/"
           rm -rf "$TMPDIR"
+          wasm-opt --version
 
       - name: Build Rust contracts
         run: ./scripts/build-rust.sh
 
-      - name: Create archive
+      - name: Create protocol archives
         run: |
-          tmp_dir=$(mktemp -d)
+          mkdir -p artifacts
           for protocol in $(echo '${{ needs.prepare.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
+            tmp_dir=$(mktemp -d)
             for contract in "contracts/${protocol}"/*; do
               if [ -d "${contract}" ]; then
                 find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
@@ -166,10 +171,9 @@ jobs:
                 fi
               fi
             done
+            tar -czf "artifacts/${protocol}.tar.gz" -C "$tmp_dir" .
+            rm -rf "$tmp_dir"
           done
-          mkdir -p artifacts
-          tar -czf "artifacts/rust.tar.gz" -C "$tmp_dir" .
-          rm -rf "$tmp_dir"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -195,6 +199,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
+      - run: forge --version
 
       - name: Build Solidity contracts
         run: ./scripts/build-solidity.sh
