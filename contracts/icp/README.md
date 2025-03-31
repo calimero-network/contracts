@@ -63,6 +63,7 @@ This will:
 
 Example output:
 
+```
 === Deployment Summary ===
 Context Contract ID: ${CONTEXT_ID}
 Ledger Contract ID: ${LEDGER_ID}
@@ -73,6 +74,7 @@ Archive Principal: ${ARCHIVE_PRINCIPAL}
 Recipient Principal: ${RECIPIENT_PRINCIPAL}
 Mock External Contract ID: ${MOCK_EXTERNAL_ID}
 Deployment completed successfully!
+```
 
 ### Testing
 
