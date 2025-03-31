@@ -444,11 +444,10 @@ contract ContextProxyTest is Test {
         assertEq(keccak256(storedValue), keccak256(value), "Context value not set correctly");
 
         // Test retrieving multiple values
-        (bytes[] memory keys, bytes[] memory values) = proxy.contextStorageEntries(0, 10);
-        assertEq(keys.length, 1, "Should have one stored key");
-        assertEq(values.length, 1, "Should have one stored value");
-        assertEq(keccak256(keys[0]), keccak256(key), "Stored key doesn't match");
-        assertEq(keccak256(values[0]), keccak256(value), "Stored value doesn't match");
+        ContextProxy.StorageEntry[] memory entries = proxy.contextStorageEntries(0, 10);
+        assertEq(entries.length, 1, "Should have one stored key");
+        assertEq(keccak256(entries[0].key), keccak256(key), "Stored key doesn't match");
+        assertEq(keccak256(entries[0].value), keccak256(value), "Stored value doesn't match");
     }
 
     function testExecuteProposalMultipleContextValues() public {
@@ -478,16 +477,16 @@ contract ContextProxyTest is Test {
 
         // Test pagination
         // Get first 2 entries
-        (bytes[] memory paginatedKeys1,) = proxy.contextStorageEntries(0, 2);
-        assertEq(paginatedKeys1.length, 2, "Should return 2 entries");
+        ContextProxy.StorageEntry[] memory entries1 = proxy.contextStorageEntries(0, 2);
+        assertEq(entries1.length, 2, "Should return 2 entries");
 
         // Get remaining entry
-        (bytes[] memory paginatedKeys2,) = proxy.contextStorageEntries(2, 1);
-        assertEq(paginatedKeys2.length, 1, "Should return 1 entry");
+        ContextProxy.StorageEntry[] memory entries2 = proxy.contextStorageEntries(2, 1);
+        assertEq(entries2.length, 1, "Should return 1 entry");
 
         // Try to get entries beyond the end
-        (bytes[] memory paginatedKeys3,) = proxy.contextStorageEntries(3, 1);
-        assertEq(paginatedKeys3.length, 0, "Should return empty array");
+        ContextProxy.StorageEntry[] memory entries3 = proxy.contextStorageEntries(3, 1);
+        assertEq(entries3.length, 0, "Should return empty array");
     }
 
     function testProposalLimitAndDeletion() public {

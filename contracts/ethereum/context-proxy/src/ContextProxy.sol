@@ -64,6 +64,11 @@ contract ContextProxy {
         bytes32 userId;
     }
 
+    struct StorageEntry {
+        bytes key;
+        bytes value;
+    }
+
     // State variables
     bytes32 public immutable contextId;
     address public immutable contextConfigId;
@@ -576,11 +581,7 @@ contract ContextProxy {
      * @param fromIndex Starting index for pagination
      * @param limit Maximum number of entries to return
      */
-    function contextStorageEntries(uint32 fromIndex, uint32 limit)
-        external
-        view
-        returns (bytes[] memory, bytes[] memory)
-    {
+    function contextStorageEntries(uint32 fromIndex, uint32 limit) external view returns (StorageEntry[] memory) {
         uint256 resultSize = 0;
 
         // Calculate result size based on available keys and pagination
@@ -589,17 +590,15 @@ contract ContextProxy {
                 (contextStorageKeys.length - fromIndex) < limit ? (contextStorageKeys.length - fromIndex) : limit;
         }
 
-        bytes[] memory keys = new bytes[](resultSize);
-        bytes[] memory values = new bytes[](resultSize);
+        StorageEntry[] memory entries = new StorageEntry[](resultSize);
 
         // Fill arrays with paginated results
         for (uint32 i = 0; i < resultSize; i++) {
             bytes memory key = contextStorageKeys[fromIndex + i];
-            keys[i] = key;
-            values[i] = contextStorage[key];
+            entries[i] = StorageEntry({key: key, value: contextStorage[key]});
         }
 
-        return (keys, values);
+        return entries;
     }
 
     /**
