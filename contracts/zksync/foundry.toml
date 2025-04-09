@@ -1,0 +1,17 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+optimizer = true
+optimizer_runs = 200
+via-ir = true
+remappings = [
+    "@matterlabs/zksync-contracts/=node_modules/@matterlabs/zksync-contracts/",
+    "context-config/=context-config/src/",
+    "context-proxy/=context-proxy/src/"
+]
+
+[profile.release]
+optimizer = true
+optimizer_runs = 200
+via-ir = true 

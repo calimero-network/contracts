@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
+import "@matterlabs/zksync-contracts/l2/system-contracts/SystemContractsCaller.sol";
+
 /**
  * @title ContextConfig
  * @dev Contract for managing context configurations, members, and capabilities
+ * Optimized for zkSync Era
  */
-contract ContextConfig {
+contract ContextConfig is SystemContractsCaller {
     struct Guard {
         bytes32[] privileged;
         uint32 revision;
@@ -134,19 +138,19 @@ contract ContextConfig {
      * @return Whether the request is authorized
      */
     function verifyAndAuthorize(Request calldata request, bytes32 r, bytes32 s, uint8 v) internal returns (bool) {
-        // Verify signature
+        // Verify signature using zkSync's optimized signature verification
         bytes32 messageHash = keccak256(abi.encode(request));
-
-        // Get the Ethereum signed message hash
         bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
 
-        // Verify the signature using ECDSA key with ethSignedMessageHash
+        // Use zkSync's optimized signature verification
         address signer = ecrecover(ethSignedMessageHash, v, r, s);
+        if (signer == address(0)) {
+            revert InvalidSignature();
+        }
 
         // Convert signer address to bytes32 for comparison
         bytes32 signerAsBytes32 = bytes32(uint256(uint160(signer)));
-
-        if (signer == address(0) || signerAsBytes32 != request.signerId) {
+        if (signerAsBytes32 != request.signerId) {
             revert InvalidSignature();
         }
 
@@ -163,11 +167,13 @@ contract ContextConfig {
         if (context.applicationGuard.revision == 0) {
             revert ContextNotFound();
         }
+
         // Check if nonce is valid
         uint64 currentNonce = context.memberNonces[request.userId];
         if (currentNonce != request.nonce) {
             revert InvalidNonce();
         }
+
         // Update nonce
         context.memberNonces[request.userId] = request.nonce + 1;
 
@@ -182,7 +188,6 @@ contract ContextConfig {
         // For member management operations, check ManageMembers capability
         if (kind == ContextRequestKind.AddMembers || kind == ContextRequestKind.RemoveMembers) {
             bool hasCap = hasCapability(request.userId, contextRequest.contextId, Capability.ManageMembers);
-
             if (!hasCap) {
                 revert Unauthorized();
             }

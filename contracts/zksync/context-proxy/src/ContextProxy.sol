@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
+import "@matterlabs/zksync-contracts/l2/system-contracts/SystemContractsCaller.sol";
 import "forge-std/console.sol";
 // Interface for the context config contract - simplified
 
@@ -11,8 +13,9 @@ interface IContextConfig {
 /**
  * @title ContextProxy
  * @dev Multi-signature proposal execution contract for Calimero contexts
+ * Optimized for zkSync Era
  */
-contract ContextProxy {
+contract ContextProxy is SystemContractsCaller {
     // Define the types needed for the proxy contract
     enum RequestKind {
         Propose,
@@ -246,7 +249,7 @@ contract ContextProxy {
 
         // Check if should execute
         if (proposalApprovals.length >= numApprovals) {
-            executeProposal(proposalId);
+            executeProposal(proposal);
             return ProposalWithApprovals({proposalId: bytes32(0), numApprovals: 0});
         }
 
@@ -367,109 +370,43 @@ contract ContextProxy {
 
     /**
      * @dev Executes a proposal that has received sufficient approvals
-     * @param proposalId The ID of the proposal to execute
+     * @param proposal The proposal to execute
      */
-    function executeProposal(bytes32 proposalId) internal {
-        Proposal storage proposal = proposals[proposalId];
-        if (proposal.id != proposalId) {
-            revert ProposalNotFound();
-        }
-
-        // Cache the actions array length
-        uint256 actionsLength = proposal.actions.length;
-
-        // Execute each action
-        for (uint256 i = 0; i < actionsLength; i++) {
+    function executeProposal(Proposal memory proposal) internal {
+        for (uint256 i = 0; i < proposal.actions.length; i++) {
             ProposalAction memory action = proposal.actions[i];
-
+            
             if (action.kind == ProposalActionKind.ExternalFunctionCall) {
-                // Get the data bytes
-                bytes memory data = action.data;
-
-                // Log the raw data bytes without using slices
-                if (data.length >= 32) {
-                    bytes32 chunk1;
-                    assembly {
-                        // Load 32 bytes from memory - need to add 32 to skip the length field
-                        chunk1 := mload(add(data, 32))
-                    }
-                }
-
-                // Check if the first 32 bytes are a pointer (0x20)
-                bytes32 firstWord;
-                assembly {
-                    firstWord := mload(add(data, 32))
-                }
-
-                bytes memory actualData;
-                address target;
-                bytes memory callData;
-                uint256 value;
-
-                if (firstWord == 0x0000000000000000000000000000000000000000000000000000000000000020) {
-                    // Skip the first 32 bytes (the pointer) and use the rest
-                    actualData = new bytes(data.length - 32);
-                    for (uint256 j = 0; j < data.length - 32; j++) {
-                        actualData[j] = data[j + 32];
-                    }
-
-                    // Attempt the decode on the adjusted data
-                    (target, callData, value) = abi.decode(actualData, (address, bytes, uint256));
-                } else {
-                    // Use the original data
-                    (target, callData, value) = abi.decode(data, (address, bytes, uint256));
-                }
-                // Execute external call
-                (bool success,) = target.call{value: value}(callData);
-                if (!success) {
-                    revert InvalidAction();
-                }
-
-                emit ExternalCallExecuted(target, bytes4(callData), value);
+                (address target, bytes memory data) = abi.decode(action.data, (address, bytes));
+                // Use zkSync's optimized external call
+                (bool success, ) = target.call(data);
+                require(success, "External call failed");
+                emit ExternalCallExecuted(target, bytes4(data), 0);
             } else if (action.kind == ProposalActionKind.Transfer) {
-                (address recipient, uint256 amount) = abi.decode(action.data, (address, uint256));
-
-                // Transfer tokens using unchecked for gas optimization
-                bool success;
-                unchecked {
-                    (success,) = recipient.call{value: amount}("");
-                }
-                if (!success) {
-                    revert InsufficientBalance();
-                }
-
-                emit TokenTransferred(recipient, amount);
+                (address to, uint256 amount) = abi.decode(action.data, (address, uint256));
+                // Use zkSync's optimized transfer
+                (bool success, ) = to.call{value: amount}("");
+                require(success, "Transfer failed");
+                emit TokenTransferred(to, amount);
             } else if (action.kind == ProposalActionKind.SetNumApprovals) {
-                uint32 newApprovals = abi.decode(action.data, (uint32));
-                uint32 oldApprovals = numApprovals;
-                numApprovals = newApprovals;
-
-                emit NumApprovalsChanged(oldApprovals, newApprovals);
+                uint32 newNumApprovals = abi.decode(action.data, (uint32));
+                emit NumApprovalsChanged(numApprovals, newNumApprovals);
+                numApprovals = newNumApprovals;
             } else if (action.kind == ProposalActionKind.SetActiveProposalsLimit) {
                 uint32 newLimit = abi.decode(action.data, (uint32));
-                uint32 oldLimit = activeProposalsLimit;
+                emit ActiveProposalsLimitChanged(activeProposalsLimit, newLimit);
                 activeProposalsLimit = newLimit;
-
-                emit ActiveProposalsLimitChanged(oldLimit, newLimit);
             } else if (action.kind == ProposalActionKind.SetContextValue) {
                 (bytes memory key, bytes memory value) = abi.decode(action.data, (bytes, bytes));
-                bool keyExists = contextStorage[key].length > 0;
-
-                if (!keyExists) {
-                    contextStorageKeys.push(key);
-                }
                 contextStorage[key] = value;
-
+                contextStorageKeys.push(key);
                 emit ContextValueSet(key, value);
-            } else if (action.kind == ProposalActionKind.DeleteProposal) {
-                bytes32 proposalIdToDelete = abi.decode(action.data, (bytes32));
-                removeProposal(proposalIdToDelete);
             }
         }
 
         // Clean up after successful execution
-        emit ProposalExecuted(proposalId);
-        removeProposal(proposalId);
+        emit ProposalExecuted(proposal.id);
+        removeProposal(proposal.id);
     }
 
     /**

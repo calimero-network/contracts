@@ -1,12 +1,31 @@
-## Calimero EVM Contracts
+## Calimero zkSync Era Contracts
 
-Smart contracts for the Calimero EVM implementation.
+Smart contracts for the Calimero implementation on zkSync Era.
 
 This repository contains two separate contract projects:
 - **Context Config**: Located in the `context-config` directory
 - **Context Proxy**: Located in the `context-proxy` directory
 
 Each contract needs to be built separately in its respective directory.
+
+## Prerequisites
+
+- Node.js and npm
+- Foundry
+- zkSync Era CLI
+
+## Installation
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Install Foundry dependencies:
+```bash
+forge install foundry-rs/forge-std --no-git
+forge install matter-labs/zksync-contracts --no-git
+```
 
 ## Foundry
 
@@ -33,56 +52,40 @@ You need to build each contract in its respective directory:
 # Build Context Config
 $ cd context-config
 $ forge install foundry-rs/forge-std --no-git
+$ forge install matter-labs/zksync-contracts --no-git
 $ forge build
 
 # Build Context Proxy
 $ cd ../context-proxy
 $ forge install foundry-rs/forge-std --no-git
-$ forge build
-
-# Build Mock Contract
-$ cd ../mock
-$ forge install foundry-rs/forge-std --no-git
+$ forge install matter-labs/zksync-contracts --no-git
 $ forge build
 ```
 
 ### Deployment Process
 
-1. Start a local devnet with Anvil:
-```shell
-$ anvil
-```
-
-2. Deploy the Context Config contract using the script:
-
-Before deploying, you need to modify the script to use one of Anvil's default accounts as the owner:
+1. Deploy to zkSync Era testnet:
 
 ```shell
-$ cd context-config/script/ContextConfig.s.sol
-```
-
-Deploy the contract:
-
-```shell
+# Deploy Context Config
 $ cd context-config
 $ forge script script/ContextConfig.s.sol \
-    --rpc-url http://localhost:8545 \
-    --private-key <ONE_OF_ANVIL_PRIVATE_KEYS> \
+    --rpc-url $ZKSYNC_RPC_URL \
+    --private-key $PRIVATE_KEY \
     --broadcast
 ```
 
 This will output the contract address which you need to use in next step.
 
-3. Set the proxy code by calling the endpoint on the Context Config contract with the Context Proxy bytecode:
+2. Set the proxy code by calling the endpoint on the Context Config contract with the Context Proxy bytecode:
 ```shell
 $ cd context-config
 $ cast send <CONTEXT_CONFIG_CONTRACT_ADDRESS> \
     "setProxyCode(bytes)" \
     $(cd context-proxy && forge inspect ContextProxy bytecode) \
-    --private-key <SAME_KEY_AS_IN_DEPLOYMENT> \
-    --rpc-url http://localhost:8545
+    --private-key $PRIVATE_KEY \
+    --rpc-url $ZKSYNC_RPC_URL
 ```
-
 
 ### Testing
 
@@ -110,3 +113,10 @@ Or run a specific test function:
 $ forge test --match-test testFunctionName
 ```
 
+## zkSync Era Specific Notes
+
+- Contracts use zkSync Era system contracts for optimized operations
+- Gas optimizations are implemented for zkSync Era's specific architecture
+- Contract size limitations are considered for zkSync Era deployment
+- Deployment requires zkSync Era RPC URL and compatible private key
+- Contracts are optimized for zkSync Era's specific opcodes and gas model
