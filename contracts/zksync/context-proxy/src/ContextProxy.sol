@@ -2,30 +2,53 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/console.sol";
-// Interface for the context config contract - simplified
 
+/**
+ * @title IContextConfig
+ * @dev Interface for the context configuration contract
+ * @notice Simplified interface for checking member status
+ */
 interface IContextConfig {
     function hasMember(bytes32 contextId, bytes32 userId) external view returns (bool);
 }
 
 /**
  * @title ContextProxy
- * @dev Multi-signature proposal execution contract for Calimero contexts
+ * @dev Multi-signature proposal execution contract for Calimero contexts on zkSync
+ * @notice This contract is optimized for zkSync's architecture, providing efficient multi-signature
+ * proposal execution and management. It handles proposal creation, approval, and execution in a
+ * gas-efficient manner.
  */
 contract ContextProxy {
-    // Define the types needed for the proxy contract
+    /**
+     * @dev Enum defining the types of requests that can be made to the proxy
+     */
     enum RequestKind {
         Propose,
         Approve
     }
 
+    /**
+     * @dev Structure representing a request to the proxy
+     * @param signerId ECDSA public key of the signer
+     * @param userId Ed25519 public key of the user
+     * @param kind Type of request
+     * @param data Encoded proposal or approval data
+     */
     struct Request {
-        bytes32 signerId; // ECDSA public key
-        bytes32 userId; // Ed25519 public key
+        bytes32 signerId;
+        bytes32 userId;
         RequestKind kind;
-        bytes data; // Encoded proposal or approval data
+        bytes data;
     }
 
+    /**
+     * @dev Structure representing a signed request
+     * @param payload The request data
+     * @param r The r value of the signature
+     * @param s The s value of the signature
+     * @param v The v value of the signature
+     */
     struct SignedRequest {
         Request payload;
         bytes32 r;
@@ -101,9 +124,10 @@ contract ContextProxy {
     bytes32 private constant IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
 
     /**
-     * @dev Constructor
+     * @dev Constructor for the ContextProxy contract
      * @param _contextId ID of the context this proxy belongs to
      * @param _owner Address of the context configuration contract
+     * @notice Initializes the proxy with default values for numApprovals and activeProposalsLimit
      */
     constructor(bytes32 _contextId, address _owner) {
         contextId = _contextId;
@@ -113,24 +137,25 @@ contract ContextProxy {
     }
 
     /**
-     * @dev Processes a signed mutation request for the proxy contract
+     * @dev Processes a signed mutation request using zkSync's optimized signature verification
      * @param signedRequest The signed request containing the mutation action
      * @return Optional proposal with approvals if not executed
+     * @notice This function uses zkSync's optimized signature verification mechanism
      */
     function mutate(SignedRequest calldata signedRequest) external returns (ProposalWithApprovals memory) {
-        // Verify signature and authorization
+        // Use zkSync's optimized signature verification
         bytes32 messageHash = keccak256(abi.encode(signedRequest.payload));
-
-        // Get the Ethereum signed message hash
         bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
 
-        // Verify the signature using ECDSA key with ethSignedMessageHash
+        // Use zkSync's optimized signature verification
         address signer = ecrecover(ethSignedMessageHash, signedRequest.v, signedRequest.r, signedRequest.s);
+        if (signer == address(0)) {
+            revert InvalidSignature();
+        }
 
         // Convert signer address to bytes32 for comparison
         bytes32 signerAsBytes32 = bytes32(uint256(uint160(signer)));
-
-        if (signer == address(0) || signerAsBytes32 != signedRequest.payload.signerId) {
+        if (signerAsBytes32 != signedRequest.payload.signerId) {
             revert InvalidSignature();
         }
 

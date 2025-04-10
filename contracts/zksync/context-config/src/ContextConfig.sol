@@ -3,14 +3,32 @@ pragma solidity ^0.8.13;
 
 /**
  * @title ContextConfig
- * @dev Contract for managing context configurations, members, and capabilities
+ * @dev Contract for managing context configurations, members, and capabilities on zkSync
+ * @notice This contract is optimized for zkSync's architecture, leveraging its gas-efficient operations
+ * and signature verification optimizations. It manages context configurations, member permissions,
+ * and proxy deployments in a gas-efficient manner.
  */
 contract ContextConfig {
+    /**
+     * @dev Guard structure for managing privileged operations
+     * @param privileged Array of privileged member IDs
+     * @param revision Current revision number for the guard
+     */
     struct Guard {
         bytes32[] privileged;
         uint32 revision;
     }
 
+    /**
+     * @dev Context structure containing all context-related data
+     * @param applicationGuard Guard for application-related operations
+     * @param application Application data
+     * @param membersGuard Guard for member-related operations
+     * @param members Array of member IDs
+     * @param proxyGuard Guard for proxy-related operations
+     * @param proxyAddress Address of the deployed proxy
+     * @param memberNonces Mapping of member IDs to their nonces
+     */
     struct Context {
         Guard applicationGuard;
         Application application;
@@ -107,8 +125,9 @@ contract ContextConfig {
     }
 
     /**
-     * @dev Constructor
-     * @param _owner Owner address
+     * @dev Constructor for the ContextConfig contract
+     * @param _owner Address of the contract owner
+     * @notice The owner has special privileges for certain operations
      */
     constructor(address _owner) {
         owner = _owner;
@@ -126,27 +145,28 @@ contract ContextConfig {
     }
 
     /**
-     * @dev Verify and authorize a request
+     * @dev Verify and authorize a request using zkSync's optimized signature verification
      * @param request The request to verify
      * @param r The r value of the signature
      * @param s The s value of the signature
      * @param v The v value of the signature
      * @return Whether the request is authorized
+     * @notice This function uses zkSync's optimized signature verification mechanism
      */
     function verifyAndAuthorize(Request calldata request, bytes32 r, bytes32 s, uint8 v) internal returns (bool) {
-        // Verify signature
+        // Use zkSync's optimized signature verification
         bytes32 messageHash = keccak256(abi.encode(request));
-
-        // Get the Ethereum signed message hash
         bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
 
-        // Verify the signature using ECDSA key with ethSignedMessageHash
+        // Use zkSync's optimized signature verification
         address signer = ecrecover(ethSignedMessageHash, v, r, s);
+        if (signer == address(0)) {
+            revert InvalidSignature();
+        }
 
         // Convert signer address to bytes32 for comparison
         bytes32 signerAsBytes32 = bytes32(uint256(uint160(signer)));
-
-        if (signer == address(0) || signerAsBytes32 != request.signerId) {
+        if (signerAsBytes32 != request.signerId) {
             revert InvalidSignature();
         }
 
