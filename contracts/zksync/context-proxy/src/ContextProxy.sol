@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/console.sol";
-
 /**
  * @title IContextConfig
  * @dev Interface for the context configuration contract
@@ -181,6 +179,7 @@ contract ContextProxy {
      * @dev Creates a new proposal in the contract
      * @param proposal The proposal to be created
      * @return Optional proposal with approvals if not executed
+     * @notice This function is optimized for zkSync's gas efficiency
      */
     function internalCreateProposal(Proposal memory proposal) internal returns (ProposalWithApprovals memory) {
         // Validate proposal
@@ -228,7 +227,10 @@ contract ContextProxy {
             newProposal.actions.push(proposal.actions[i]);
         }
 
-        numProposalsPk[proposal.authorId] = authorProposalCount + 1;
+        // Use unchecked for gas optimization
+        unchecked {
+            numProposalsPk[proposal.authorId] = authorProposalCount + 1;
+        }
 
         // Add to the list of all proposal IDs
         allProposalIds.push(proposalId);

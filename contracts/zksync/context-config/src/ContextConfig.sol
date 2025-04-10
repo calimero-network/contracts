@@ -183,11 +183,13 @@ contract ContextConfig {
         if (context.applicationGuard.revision == 0) {
             revert ContextNotFound();
         }
+
         // Check if nonce is valid
         uint64 currentNonce = context.memberNonces[request.userId];
         if (currentNonce != request.nonce) {
             revert InvalidNonce();
         }
+
         // Update nonce
         context.memberNonces[request.userId] = request.nonce + 1;
 
@@ -202,7 +204,6 @@ contract ContextConfig {
         // For member management operations, check ManageMembers capability
         if (kind == ContextRequestKind.AddMembers || kind == ContextRequestKind.RemoveMembers) {
             bool hasCap = hasCapability(request.userId, contextRequest.contextId, Capability.ManageMembers);
-
             if (!hasCap) {
                 revert Unauthorized();
             }
@@ -218,14 +219,18 @@ contract ContextConfig {
      * @param userId The user ID
      * @param contextId The context ID
      * @return Whether the user is authorized
+     * @notice This function is optimized for zkSync's gas efficiency
      */
     function isAuthorized(bytes32 userId, bytes32 contextId) internal view returns (bool) {
         bytes32[] storage privileged = contexts[contextId].membersGuard.privileged;
         uint256 length = privileged.length;
 
-        for (uint256 i = 0; i < length; i++) {
-            if (privileged[i] == userId) {
-                return true;
+        // Use unchecked for gas optimization
+        unchecked {
+            for (uint256 i = 0; i < length; i++) {
+                if (privileged[i] == userId) {
+                    return true;
+                }
             }
         }
         return false;
