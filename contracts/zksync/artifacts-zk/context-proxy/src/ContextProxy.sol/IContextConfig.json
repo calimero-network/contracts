@@ -1,0 +1,36 @@
+{
+  "_format": "hh-zksolc-artifact-1",
+  "contractName": "IContextConfig",
+  "sourceName": "context-proxy/src/ContextProxy.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "contextId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "userId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "hasMember",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "factoryDeps": {}
+}

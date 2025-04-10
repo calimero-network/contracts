@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
-import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
-import "@matterlabs/zksync-contracts/l2/system-contracts/SystemContractsCaller.sol";
-import "forge-std/console.sol";
 // Interface for the context config contract - simplified
-
 interface IContextConfig {
     function hasMember(bytes32 contextId, bytes32 userId) external view returns (bool);
 }
@@ -15,7 +11,7 @@ interface IContextConfig {
  * @dev Multi-signature proposal execution contract for Calimero contexts
  * Optimized for zkSync Era
  */
-contract ContextProxy is SystemContractsCaller {
+contract ContextProxy {
     // Define the types needed for the proxy contract
     enum RequestKind {
         Propose,

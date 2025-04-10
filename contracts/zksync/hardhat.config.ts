@@ -12,9 +12,9 @@ const config: HardhatUserConfig = {
       isSystem: true,
       optimizer: {
         enabled: true,
-        mode: "3",
-      },
-    },
+        mode: "3"
+      }
+    }
   },
   defaultNetwork: "zkSyncTestnet",
   networks: {
@@ -22,7 +22,7 @@ const config: HardhatUserConfig = {
       zksync: true,
     },
     zkSyncTestnet: {
-      url: "https://zksync2-testnet.zksync.dev",
+      url: "https://testnet.era.zksync.dev",
       ethNetwork: "goerli",
       zksync: true,
       verifyURL: "https://zksync2-testnet-explorer.zksync.dev/contract_verification",
@@ -39,22 +39,21 @@ const config: HardhatUserConfig = {
     },
   },
   solidity: {
-    version: "0.8.17",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
-        details: {
-          yul: true,
-          yulDetails: {
-            stackAllocation: true,
-            optimizerSteps: "dhfoDgvulfnTUtnIf"
-          },
-        },
       },
       viaIR: true,
     },
   },
+  paths: {
+    sources: "./context-proxy/src",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts"
+  }
 };
 
 export default config; 

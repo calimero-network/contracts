@@ -1,3 +1,3 @@
-@matterlabs/zksync-contracts/=node_modules/@matterlabs/zksync-contracts/
+@matterlabs/=node_modules/@matterlabs/
 @openzeppelin/=node_modules/@openzeppelin/
 forge-std/=lib/forge-std/src/ 
