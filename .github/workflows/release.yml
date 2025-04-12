@@ -91,7 +91,7 @@ jobs:
             echo "overwrite_release=false">> $GITHUB_OUTPUT
             echo "version=$version" >> $GITHUB_OUTPUT
 
-          elif [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ github.head_ref }}" == release/* ]]; then
+          elif [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ github.head_ref }}" =~ ^(pre)?release/.* ]]; then
             version="prerelease-${{ github.event.number }}"
             echo "Prerelease version: $version"
 
