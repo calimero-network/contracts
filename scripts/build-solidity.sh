@@ -9,3 +9,5 @@ set -ex
 # Build contracts
 contracts/ethereum/context-config/build.sh
 contracts/ethereum/context-proxy/build_contracts.sh
+contracts/zksync/context-config/build.sh
+contracts/zksync/context-proxy/build_contracts.sh
