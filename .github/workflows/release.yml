@@ -41,7 +41,7 @@ jobs:
         id: setup_matrix
         run: |
           echo 'rust_protocol_matrix=["icp", "near", "stellar"]' >> "$GITHUB_OUTPUT"
-          echo 'solidity_protocol_matrix=["ethereum"]' >> "$GITHUB_OUTPUT"
+          echo 'solidity_protocol_matrix=["ethereum", "zksync"]' >> "$GITHUB_OUTPUT"
 
       - name: Get version info
         id: version_info
