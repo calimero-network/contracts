@@ -13,7 +13,7 @@ contract ContextConfigScript is Script {
         vm.startBroadcast();
 
         // Deploy with just the owner address
-        config = new ContextConfig(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
+        config = new ContextConfig(0x50B69dE34fA8326AcD9853c847CA9365e341D636);
 
         vm.stopBroadcast();
     }
