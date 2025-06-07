@@ -96,6 +96,32 @@ contract ContextProxyTest is Test {
         mockExternal = new MockExternalContract();
     }
 
+    function testExecuteWithSingleApproval() public {
+    // Setup
+    bytes32 proposalId = keccak256("single-approval-proposal");
+    address recipient = address(0x123);
+    uint256 transferAmount = 1 ether;
+
+    // Create a Transfer action
+    ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
+    actions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.Transfer,
+        data: abi.encode(recipient, transferAmount)
+    });
+
+    // Submit proposal as member1
+    ContextProxy.ProposalWithApprovals memory result =
+        submitProposal(proposalId, member1Id, member1PrivateKey, actions);
+
+    // Verify initial state - should be executed immediately
+    assertEq(result.proposalId, bytes32(0));
+    assertEq(result.numApprovals, 0);
+
+    // Verify balances after execution
+    assertEq(address(proxy).balance, initialProxyBalance - transferAmount);
+    assertEq(recipient.balance, initialRecipientBalance + transferAmount);
+}
+
     // Helper function to create a context
     function createContext(bytes32 _contextId, bytes32 _memberId, bytes32 _ed25519PrivateKey) internal {
         // Derive ECDSA private key from Ed25519 private key

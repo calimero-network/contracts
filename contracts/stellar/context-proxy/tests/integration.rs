@@ -954,3 +954,54 @@ fn test_proposal_limits_and_deletion() {
         "Should have exactly 2 active proposals"
     );
 }
+
+// #[test]
+// fn test_execute_with_single_approval() {
+//     let ProxyTestContext {
+//         env,
+//         proxy_contract,
+//         context_author_sk,
+//         context_author_id,
+//         ..
+//     } = setup();
+
+//     let client = ContextProxyContractClient::new(&env, &proxy_contract);
+
+//     // Create and submit proposal
+//     let (proposal_id, proposal) = create_test_proposal(
+//         &env,
+//         &proxy_contract,
+//         &context_author_id,
+//         vec![
+//             &env,
+//             StellarProposalAction::SetContextValue(
+//                 Bytes::from_slice(&env, "test".as_bytes()),
+//                 Bytes::from_slice(&env, "value".as_bytes()),
+//             ),
+//         ],
+//     );
+
+//     let request = StellarProxyMutateRequest::Propose(proposal);
+//     let signed_request = create_signed_request(
+//         &env,
+//         &context_author_sk,
+//         ProxySignedRequestPayload::Proxy(request),
+//     );
+
+//     // Should execute immediately with single approval
+//     let result = client
+//         .mock_all_auths()
+//         .mutate(&signed_request)
+//         .expect("Proposal should execute");
+
+//     assert!(result., "Proposal should be executed immediately");
+
+//     // Verify context value was set
+//     let test_key = Bytes::from_slice(&env, "test".as_bytes());
+//     let stored_value = client.get_context_value(&test_key);
+//     assert_eq!(
+//         stored_value,
+//         Some(Bytes::from_slice(&env, "value".as_bytes())),
+//         "Context value should be set"
+//     );
+// }

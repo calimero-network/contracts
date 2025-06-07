@@ -1537,3 +1537,52 @@ fn test_delete_proposal() {
     let cycles_used = initial_cycle_balance - final_cycle_balance;
     println!("Cycles used: {}", cycles_used);
 }
+
+// #[test]
+// fn test_execute_with_single_approval() {
+//     let ProxyTestContext {
+//         pic,
+//         proxy_canister,
+//         author_sk,
+//         ..
+//     } = setup();
+
+//     let author_pk = author_sk.verifying_key();
+//     let author_id = author_pk.rt().expect("infallible conversion");
+//     let mut rng = rand::thread_rng();
+//     let proposal_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+
+//     // Create proposal
+//     let proposal = ICProposal {
+//         id: proposal_id,
+//         author_id,
+//         actions: vec![ICProposalAction::SetContextValue {
+//             key: vec![1, 2, 3],
+//             value: vec![4, 5, 6],
+//         }],
+//     };
+
+//     // Submit proposal - should execute immediately with single approval
+//     let result = create_and_verify_proposal(&pic, proxy_canister, &author_sk, proposal)
+//         .expect("Proposal creation should succeed");
+
+//     assert!(result.is_none(), "Proposal should be executed immediately");
+
+//     // Verify context value was set
+//     let query_response = pic
+//         .query_call(
+//             proxy_canister,
+//             Principal::anonymous(),
+//             "get_context_value",
+//             candid::encode_one(vec![1, 2, 3]).unwrap(),
+//         )
+//         .expect("Query failed");
+
+//     match query_response {
+//         WasmResult::Reply(bytes) => {
+//             let value: Option<Vec<u8>> = candid::decode_one(&bytes).expect("Failed to decode");
+//             assert_eq!(value, Some(vec![4, 5, 6]), "Context value should be set");
+//         }
+//         _ => panic!("Unexpected response type"),
+//     }
+// }
