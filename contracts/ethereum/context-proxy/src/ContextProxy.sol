@@ -114,7 +114,7 @@ contract ContextProxy {
         contextId = _contextId;
         contextConfigId = _owner;
         numApprovals = 1;
-        activeProposalsLimit = 10;
+        activeProposalsLimit = 1;
     }
 
     /**

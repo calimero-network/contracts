@@ -41,7 +41,7 @@ fn init(context_id: ICRepr<ContextId>, ledger_id: Principal) {
             proposals: BTreeMap::new(),
             approvals: BTreeMap::new(),
             num_proposals_pk: BTreeMap::new(),
-            active_proposals_limit: 10,
+            active_proposals_limit: 1,
             context_storage: HashMap::new(),
             ledger_id,
         });

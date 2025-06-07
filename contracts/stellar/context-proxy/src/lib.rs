@@ -65,7 +65,7 @@ impl ContextProxyContract {
             proposals: Map::new(&env),
             approvals: Map::new(&env),
             num_proposals_pk: Map::new(&env),
-            active_proposals_limit: 10,
+            active_proposals_limit: 1,
             context_storage: Map::new(&env),
             ledger_id,
         };
