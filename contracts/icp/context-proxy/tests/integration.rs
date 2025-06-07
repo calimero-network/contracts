@@ -75,6 +75,82 @@ fn create_and_verify_proposal(
     }
 }
 
+#[test]
+fn test_execute_proposal_with_single_approval() {
+    let mut rng = rand::thread_rng();
+    let ProxyTestContext {
+        pic,
+        proxy_canister,
+        author_sk,
+        ..
+    } = setup();
+
+    let response = pic.query_call(
+        proxy_canister,
+        Principal::anonymous(),
+        "get_num_approvals",
+        candid::encode_args(()).unwrap(),
+    ).expect("Query failed");
+    
+    let num_approvals: u32 = match response {
+        WasmResult::Reply(bytes) => candid::decode_one(&bytes).expect("Failed to decode num_approvals"),
+        _ => panic!("Unexpected response type"),
+    };
+    assert_eq!(num_approvals, 1, "Initial num_approvals should be 1");
+
+    let author_pk = author_sk.verifying_key();
+    let author_id = author_pk.rt().expect("infallible conversion");
+    let proposal_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+
+    let proposal = ICProposal {
+        id: proposal_id,
+        author_id,
+        actions: vec![ICProposalAction::Transfer {
+            receiver_id: Principal::anonymous(),
+            amount: 100_000,
+        }],
+    };
+
+    let result = create_and_verify_proposal(&pic, proxy_canister, &author_sk, proposal);
+    assert!(result.is_ok(), "Proposal should execute immediately with single approval");
+
+    let set_approvals_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+    let set_approvals_proposal = ICProposal {
+        id: set_approvals_id,
+        author_id,
+        actions: vec![ICProposalAction::SetNumApprovals { num_approvals: 3 }],
+    };
+
+    let _ = create_and_verify_proposal(&pic, proxy_canister, &author_sk, set_approvals_proposal);
+
+    let response = pic.query_call(
+        proxy_canister,
+        Principal::anonymous(),
+        "get_num_approvals",
+        candid::encode_args(()).unwrap(),
+    ).expect("Query failed");
+    
+    let num_approvals: u32 = match response {
+        WasmResult::Reply(bytes) => candid::decode_one(&bytes).expect("Failed to decode num_approvals"),
+        _ => panic!("Unexpected response type"),
+    };
+    assert_eq!(num_approvals, 3, "num_approvals should be updated to 3");
+
+    let new_proposal_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+    let new_proposal = ICProposal {
+        id: new_proposal_id,
+        author_id,
+        actions: vec![ICProposalAction::Transfer {
+            receiver_id: Principal::anonymous(),
+            amount: 100_000,
+        }],
+    };
+
+    let result = create_and_verify_proposal(&pic, proxy_canister, &author_sk, new_proposal);
+    let proposal_with_approvals = result.expect("Proposal should be created");
+    assert_eq!(proposal_with_approvals.unwrap().num_approvals, 1, "Should have 1 approval after creation");
+}
+
 struct ProxyTestContext {
     pic: PocketIc,
     proxy_canister: Principal,

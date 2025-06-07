@@ -15,7 +15,7 @@ use ed25519_dalek::{Signer, SigningKey};
 // Soroban SDK imports
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::xdr::ToXdr;
+// use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{log, vec, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val, Vec};
 
 // Import the context contract
@@ -421,6 +421,96 @@ fn test_execute_proposal_transfer() {
         final_recipient_balance, transfer_amount,
         "Recipient should receive the transfer amount after execution"
     );
+}
+
+#[test]
+fn test_execute_proposal_with_single_approval() {
+    let ProxyTestContext {
+        env,
+        proxy_contract,
+        context_author_sk,
+        context_author_id,
+        token_client,
+        ..
+    } = setup();
+
+    let client = ContextProxyContractClient::new(&env, &proxy_contract);
+    assert_eq!(client.get_num_approvals(), 1);
+
+    let transfer_amount = 100_000;
+    let test_user = Address::generate(&env);
+    let (_proposal_id, proposal) = create_test_proposal(
+        &env,
+        &proxy_contract,
+        &context_author_id,
+        vec![
+            &env,
+            StellarProposalAction::Transfer(test_user.clone(), transfer_amount),
+        ],
+    );
+
+    let request = StellarProxyMutateRequest::Propose(proposal);
+    let signed_request = create_signed_request(
+        &env,
+        &context_author_sk,
+        ProxySignedRequestPayload::Proxy(request),
+    );
+
+    let result = client.mutate(&signed_request);
+    assert!(result.is_none(), "Proposal should execute immediately");
+
+    let final_recipient_balance = token_client.balance(&test_user);
+    assert_eq!(
+        final_recipient_balance, transfer_amount,
+        "Recipient should receive the transfer amount"
+    );
+
+    let (set_approvals_id, set_approvals_proposal) = create_test_proposal(
+        &env,
+        &proxy_contract,
+        &context_author_id,
+        vec![&env, StellarProposalAction::SetNumApprovals(3)],
+    );
+
+    let request = StellarProxyMutateRequest::Propose(set_approvals_proposal);
+    let signed_request = create_signed_request(
+        &env,
+        &context_author_sk,
+        ProxySignedRequestPayload::Proxy(request),
+    );
+
+    let mut result = client.mutate(&signed_request);
+    result = submit_approval(&env, &client, &set_approvals_id, &context_author_id, &context_author_sk, 1);
+    assert!(result.is_none(), "Proposal should execute after approvals");
+
+    assert_eq!(client.get_num_approvals(), 3);
+
+    let (new_proposal_id, new_proposal) = create_test_proposal(
+        &env,
+        &proxy_contract,
+        &context_author_id,
+        vec![
+            &env,
+            StellarProposalAction::Transfer(test_user.clone(), transfer_amount),
+        ],
+    );
+
+    let request = StellarProxyMutateRequest::Propose(new_proposal);
+    let signed_request = create_signed_request(
+        &env,
+        &context_author_sk,
+        ProxySignedRequestPayload::Proxy(request),
+    );
+
+    result = client.mutate(&signed_request);
+    let proposal = result.expect("Proposal should be created");
+    assert_eq!(proposal.num_approvals, 1);
+
+    let result = submit_approval(&env, &client, &new_proposal_id, &context_author_id, &context_author_sk, 2);
+    assert!(result.is_some(), "Proposal should not execute yet");
+
+    let result = submit_approval(&env, &client, &new_proposal_id, &context_author_id, &context_author_sk, 0);
+    assert!(result.is_none(), "Proposal should execute after 3 approvals");
 }
 
 /// Tests proposal execution for changing the required number of approvals

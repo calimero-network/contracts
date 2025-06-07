@@ -113,8 +113,8 @@ contract ContextProxy {
     constructor(bytes32 _contextId, address _owner) {
         contextId = _contextId;
         contextConfigId = _owner;
-        numApprovals = 3;
-        activeProposalsLimit = 10;
+        numApprovals = 1;
+        activeProposalsLimit = 1;
     }
 
     /**

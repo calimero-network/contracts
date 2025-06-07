@@ -96,6 +96,77 @@ contract ContextProxyTest is Test {
         mockExternal = new MockExternalContract();
     }
 
+    function testExecuteProposalWithSingleApproval() public {
+    // Verify initial state is 1 approval
+    assertEq(proxy.numApprovals(), 1, "Initial approvals should be 1");
+
+    bytes32 proposalId = keccak256("single-approval-proposal");
+    address recipient = address(0x123);
+    uint256 transferAmount = 1 ether;
+
+    // Fund the proxy contract first
+    vm.deal(address(proxy), 10 ether);
+
+    // Record initial balances
+    uint256 initialProxyBalance = address(proxy).balance;
+    uint256 initialRecipientBalance = recipient.balance;
+
+    // Create a Transfer action
+    ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
+    actions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.Transfer,
+        data: abi.encode(recipient, transferAmount)
+    });
+
+    // Submit proposal as member1 - should execute immediately
+    ContextProxy.ProposalWithApprovals memory result =
+        submitProposal(proposalId, member1Id, member1PrivateKey, actions);
+
+    // After execution, proposal should be cleared (id = 0) and approvals reset
+    assertEq(result.proposalId, bytes32(0), "Proposal should be executed immediately");
+    assertEq(result.numApprovals, 0, "No approvals needed after execution");
+
+    // Verify balances after execution
+    assertEq(address(proxy).balance, initialProxyBalance - transferAmount);
+    assertEq(recipient.balance, initialRecipientBalance + transferAmount);
+
+    // Now test changing to 3 approvals
+    bytes32 setApprovalsId = keccak256("set-approvals-proposal");
+    actions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.SetNumApprovals,
+        data: abi.encode(uint32(3))
+    });
+
+    // Submit and approve the change
+    submitProposal(setApprovalsId, member1Id, member1PrivateKey, actions);
+    approveProposal(setApprovalsId, member2Id, member2PrivateKey);
+    approveProposal(setApprovalsId, member3Id, member3PrivateKey);
+
+    // Verify numApprovals was updated
+    assertEq(proxy.numApprovals(), 3, "numApprovals should be updated to 3");
+
+    // Now test a new proposal requires 3 approvals
+    bytes32 newProposalId = keccak256("new-proposal");
+    actions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.Transfer,
+        data: abi.encode(recipient, transferAmount)
+    });
+
+    result = submitProposal(newProposalId, member1Id, member1PrivateKey, actions);
+    assertEq(result.proposalId, newProposalId, "New proposal should be created");
+    assertEq(result.numApprovals, 1, "Should have 1 approval after creation");
+
+    // Second approval
+    result = approveProposal(newProposalId, member2Id, member2PrivateKey);
+    assertEq(result.proposalId, newProposalId);
+    assertEq(result.numApprovals, 2, "Should have 2 approvals");
+
+    // Third approval executes
+    result = approveProposal(newProposalId, member3Id, member3PrivateKey);
+    assertEq(result.proposalId, bytes32(0), "Proposal should be executed");
+    assertEq(result.numApprovals, 0, "No approvals needed after execution");
+}
+
     // Helper function to create a context
     function createContext(bytes32 _contextId, bytes32 _memberId, bytes32 _ed25519PrivateKey) internal {
         // Derive ECDSA private key from Ed25519 private key

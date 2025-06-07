@@ -332,23 +332,46 @@ async fn create_and_approve_proposal(
     let proposal_id = proxy_helper.generate_proposal_id();
     let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], actions)?;
 
-    let res: ProposalWithApprovals = proxy_helper
+    let res: Option<ProposalWithApprovals> = proxy_helper
         .proxy_mutate(&relayer_account, &proposal)
         .await?
         .json()?;
 
-    assert_eq!(res.num_approvals, 1);
-    assert_eq!(
-        res.proposal_id,
-        proposal_id.rt().expect("infallible conversion")
+    assert!(
+        res.is_none(),
+        "Proposal should be executed immediately with single approval"
     );
+
+    let set_approvals_action = ProposalAction::SetNumApprovals { num_approvals: 3 };
+    let set_approvals_proposal = proxy_helper.create_proposal_request(
+        &proxy_helper.generate_proposal_id(),
+        &members[0],
+        &vec![set_approvals_action],
+    )?;
+
+    let _ = proxy_helper
+        .proxy_mutate(&relayer_account, &set_approvals_proposal)
+        .await?;
+
+    let new_proposal = proxy_helper.create_proposal_request(
+        &proxy_helper.generate_proposal_id(),
+        &members[0],
+        actions,
+    )?;
+
+    let res: ProposalWithApprovals = proxy_helper
+        .proxy_mutate(&relayer_account, &new_proposal)
+        .await?
+        .json()?;
+
+    assert_eq!(res.num_approvals, 1);
 
     let res: ProposalWithApprovals = proxy_helper
         .approve_proposal(&relayer_account, &members[1], &res.proposal_id)
         .await?
         .json()?;
 
-    assert_eq!(res.num_approvals, 2, "Proposal should have 2 approvals");
+    assert_eq!(res.num_approvals, 2);
 
     let res: Option<ProposalWithApprovals> = proxy_helper
         .approve_proposal(&relayer_account, &members[2], &res.proposal_id)
@@ -359,6 +382,39 @@ async fn create_and_approve_proposal(
         res.is_none(),
         "Proposal should be removed after the execution"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_execute_proposal_with_single_approval() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let (proxy_helper, relayer_account, members) = setup_action_test(&worker).await?;
+
+    let counter_helper = CounterContractHelper::deploy_and_initialize(&worker).await?;
+
+    let actions = vec![ProposalAction::ExternalFunctionCall {
+        receiver_id: counter_helper.counter_contract.id().to_string(),
+        method_name: "increment".to_string(),
+        args: serde_json::to_string(&Vec::<u8>::new())?,
+        deposit: 0,
+    }];
+
+    let proposal_id = proxy_helper.generate_proposal_id();
+    let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], &actions)?;
+
+    let result: Option<ProposalWithApprovals> = proxy_helper
+        .proxy_mutate(&relayer_account, &proposal)
+        .await?
+        .json()?;
+
+    assert!(
+        result.is_none(),
+        "Proposal should be executed immediately with single approval"
+    );
+
+    let counter_value: u32 = counter_helper.get_value().await?;
+    assert_eq!(counter_value, 1);
 
     Ok(())
 }
