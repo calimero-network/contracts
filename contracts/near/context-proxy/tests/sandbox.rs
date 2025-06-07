@@ -337,13 +337,11 @@ async fn create_and_approve_proposal(
         .await?
         .json()?;
 
-    // With default limit of 1, proposal should execute immediately
     assert!(
         res.is_none(),
         "Proposal should be executed immediately with single approval"
     );
 
-    // Now change num_approvals to 3 for testing multiple approvals
     let set_approvals_action = ProposalAction::SetNumApprovals { num_approvals: 3 };
     let set_approvals_proposal = proxy_helper.create_proposal_request(
         &proxy_helper.generate_proposal_id(),
@@ -355,7 +353,6 @@ async fn create_and_approve_proposal(
         .proxy_mutate(&relayer_account, &set_approvals_proposal)
         .await?;
 
-    // Create a new proposal that will require 3 approvals
     let new_proposal = proxy_helper.create_proposal_request(
         &proxy_helper.generate_proposal_id(),
         &members[0],
@@ -406,7 +403,6 @@ async fn test_execute_proposal_with_single_approval() -> Result<()> {
     let proposal_id = proxy_helper.generate_proposal_id();
     let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], &actions)?;
 
-    // Proposal should execute immediately with just 1 approval (the author's)
     let result: Option<ProposalWithApprovals> = proxy_helper
         .proxy_mutate(&relayer_account, &proposal)
         .await?
@@ -417,7 +413,6 @@ async fn test_execute_proposal_with_single_approval() -> Result<()> {
         "Proposal should be executed immediately with single approval"
     );
 
-    // Verify the counter was incremented
     let counter_value: u32 = counter_helper.get_value().await?;
     assert_eq!(counter_value, 1);
 
