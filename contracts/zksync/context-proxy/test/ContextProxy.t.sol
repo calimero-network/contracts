@@ -97,29 +97,83 @@ contract ContextProxyTest is Test {
     }
 
     function testExecuteWithSingleApproval() public {
-    // Setup
-    bytes32 proposalId = keccak256("single-approval-proposal");
-    address recipient = address(0x123);
-    uint256 transferAmount = 1 ether;
+    // First, verify the initial numApprovals is 3 (default)
+    assertEq(proxy.numApprovals(), 3, "Initial numApprovals should be 3");
 
-    // Create a Transfer action
+    // Create a proposal to set numApprovals to 1
+    bytes32 setApprovalsProposalId = keccak256("set-approvals-to-1");
     ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
     actions[0] = ContextProxy.ProposalAction({
-        kind: ContextProxy.ProposalActionKind.Transfer,
-        data: abi.encode(recipient, transferAmount)
+        kind: ContextProxy.ProposalActionKind.SetNumApprovals,
+        data: abi.encode(uint32(1))
     });
 
     // Submit proposal as member1
     ContextProxy.ProposalWithApprovals memory result =
-        submitProposal(proposalId, member1Id, member1PrivateKey, actions);
+        submitProposal(setApprovalsProposalId, member1Id, member1PrivateKey, actions);
 
-    // Verify initial state - should be executed immediately
+    // Verify initial state
+    assertEq(result.proposalId, setApprovalsProposalId);
+    assertEq(result.numApprovals, 1);
+
+    // Member2 approves the proposal
+    result = approveProposal(setApprovalsProposalId, member2Id, member2PrivateKey);
+    assertEq(result.proposalId, setApprovalsProposalId);
+    assertEq(result.numApprovals, 2);
+
+    // Member3 approves the proposal - should execute
+    result = approveProposal(setApprovalsProposalId, member3Id, member3PrivateKey);
     assertEq(result.proposalId, bytes32(0));
     assertEq(result.numApprovals, 0);
 
-    // Verify balances after execution
-    assertEq(address(proxy).balance, initialProxyBalance - transferAmount);
-    assertEq(recipient.balance, initialRecipientBalance + transferAmount);
+    // Verify numApprovals was updated to 1
+    assertEq(proxy.numApprovals(), 1, "numApprovals should be set to 1");
+
+    // Now test that a proposal executes with just one approval
+    bytes memory key = "test_key";
+    bytes memory value = "test_value";
+    bytes32 proposalId = keccak256("single-approval-test");
+
+    // Create a SetContextValue action
+    ContextProxy.ProposalAction[] memory singleApprovalActions = new ContextProxy.ProposalAction[](1);
+    singleApprovalActions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.SetContextValue,
+        data: abi.encode(key, value)
+    });
+
+    // Submit proposal as member1 - should execute immediately with single approval
+    result = submitProposal(proposalId, member1Id, member1PrivateKey, singleApprovalActions);
+    
+    // When proposal executes immediately, it returns empty result
+    assertEq(result.proposalId, bytes32(0));
+    assertEq(result.numApprovals, 0);
+
+    // Verify the context value was set
+    bytes memory storedValue = proxy.getContextValue(key);
+    assertEq(keccak256(storedValue), keccak256(value), "Context value not set correctly");
+
+    // Verify the proposal was removed after execution
+    ContextProxy.Proposal memory storedProposal = proxy.getProposal(proposalId);
+    assertEq(storedProposal.id, bytes32(0), "Proposal should be removed after execution");
+
+    // Test with a transfer action as well
+    vm.deal(address(proxy), 1 ether);
+    bytes32 transferProposalId = keccak256("single-approval-transfer");
+    address recipient = address(0x123);
+    uint256 amount = 0.5 ether;
+    
+    ContextProxy.ProposalAction[] memory transferActions = new ContextProxy.ProposalAction[](1);
+    transferActions[0] = ContextProxy.ProposalAction({
+        kind: ContextProxy.ProposalActionKind.Transfer,
+        data: abi.encode(recipient, amount)
+    });
+
+    uint256 initialBalance = recipient.balance;
+    result = submitProposal(transferProposalId, member1Id, member1PrivateKey, transferActions);
+    
+    assertEq(result.proposalId, bytes32(0));
+    assertEq(result.numApprovals, 0);
+    assertEq(recipient.balance, initialBalance + amount);
 }
 
     // Helper function to create a context
