@@ -1537,3 +1537,111 @@ fn test_delete_proposal() {
     let cycles_used = initial_cycle_balance - final_cycle_balance;
     println!("Cycles used: {}", cycles_used);
 }
+
+#[test]
+fn test_execute_with_single_approval() {
+    let ProxyTestContext {
+        pic,
+        proxy_canister,
+        author_sk,
+        context_canister,
+        context_id,
+        ..
+    } = setup();
+
+    // First set num_approvals to 1 through a proposal
+    let author_pk = author_sk.verifying_key();
+    let author_id = author_pk.rt().expect("infallible conversion");
+    let mut rng = rand::thread_rng();
+
+    // Add two more members first so we have enough approvals to change num_approvals
+    let signer2_sk = SigningKey::from_bytes(&rng.gen());
+    let signer2_pk = signer2_sk.verifying_key();
+    let signer2_id = signer2_pk.rt().expect("infallible conversion");
+
+    let signer3_sk = SigningKey::from_bytes(&rng.gen());
+    let signer3_pk = signer3_sk.verifying_key();
+    let signer3_id = signer3_pk.rt().expect("infallible conversion");
+
+    let _ = add_members_to_context(
+        &pic,
+        context_canister,
+        context_id,
+        &author_sk,
+        vec![signer2_pk.rt().expect("infallible conversion"), signer3_pk.rt().expect("infallible conversion")],
+    );
+
+    let set_approvals_proposal_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+    let set_approvals_proposal = ICProposal {
+        id: set_approvals_proposal_id,
+        author_id,
+        actions: vec![ICProposalAction::SetNumApprovals { num_approvals: 1 }],
+    };
+
+    // Create and approve the set_approvals proposal
+    let _ = create_and_verify_proposal(&pic, proxy_canister, &author_sk, set_approvals_proposal)
+        .expect("Setting num_approvals should succeed");
+
+    // Approve by signer2
+    let approval = ICProposalApprovalWithSigner {
+        proposal_id: set_approvals_proposal_id,
+        signer_id: signer2_id,
+    };
+    let request = ICProxyMutateRequest::Approve { approval };
+    let signed_request = create_signed_request(&signer2_sk, request);
+    let _ = pic.update_call(
+        proxy_canister,
+        Principal::anonymous(),
+        "mutate",
+        candid::encode_one(signed_request).unwrap(),
+    );
+
+    // Approve by signer3 
+    let approval = ICProposalApprovalWithSigner {
+        proposal_id: set_approvals_proposal_id,
+        signer_id: signer3_id,
+    };
+    let request = ICProxyMutateRequest::Approve { approval };
+    let signed_request = create_signed_request(&signer3_sk, request);
+    let _ = pic.update_call(
+        proxy_canister,
+        Principal::anonymous(),
+        "mutate",
+        candid::encode_one(signed_request).unwrap(),
+    );
+
+    // Now create the actual test proposal
+    let proposal_id = rng.gen::<[_; 32]>().rt().expect("infallible conversion");
+    let proposal = ICProposal {
+        id: proposal_id,
+        author_id,
+        actions: vec![ICProposalAction::SetContextValue {
+            key: vec![1, 2, 3],
+            value: vec![4, 5, 6],
+        }],
+    };
+
+    // Submit proposal - should execute immediately with single approval
+    let result = create_and_verify_proposal(&pic, proxy_canister, &author_sk, proposal)
+        .expect("Proposal creation should succeed");
+
+    assert!(result.is_none(), "Proposal should be executed immediately");
+
+    // Verify context value was set 
+    let query_response = pic
+        .query_call(
+            proxy_canister,
+            Principal::anonymous(),
+            "get_context_value",
+            candid::encode_args((vec![1u8, 2u8, 3u8],)).unwrap(), 
+        )
+        .expect("Query failed");
+
+    match query_response {
+        WasmResult::Reply(bytes) => {
+            let value: Option<Vec<u8>> = candid::decode_one(&bytes).expect("Failed to decode");
+            assert_eq!(value, Some(vec![4, 5, 6]), "Context value should be set");
+        }
+        _ => panic!("Unexpected response type"),
+    }
+}

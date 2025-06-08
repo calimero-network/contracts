@@ -292,10 +292,29 @@ async fn test_create_proposal_and_approve_by_non_member() -> Result<()> {
     let error = res2.expect_err("Expected an error from the contract");
     assert!(error.to_string().contains("Is not a member"));
 
-    let view_proposal: ProposalWithApprovals = proxy_helper
-        .view_proposal_confirmations(&relayer_account, &res.proposal_id)
-        .await?
-        .json()?;
+    // Add retry logic for view call
+    let mut attempts = 0;
+    let max_attempts = 3;
+    let mut view_proposal = None;
+
+    while attempts < max_attempts {
+        match proxy_helper
+            .view_proposal_confirmations(&relayer_account, &res.proposal_id)
+            .await
+        {
+            Ok(result) => {
+                view_proposal = Some(result.json()?);
+                break;
+            }
+            Err(e) if attempts == max_attempts - 1 => return Err(e),
+            Err(_) => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
+
+    let view_proposal: ProposalWithApprovals = view_proposal.expect("Failed to get proposal");
     assert_eq!(view_proposal.num_approvals, 1);
 
     Ok(())
@@ -323,6 +342,95 @@ async fn setup_action_test(
     Ok((proxy_helper, relayer_account, members))
 }
 
+#[tokio::test]
+async fn test_execute_with_single_approval() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let (config_helper, proxy_helper, relayer_account, context_sk, alice_sk) =
+        setup_test(&worker, "test_execute_with_single_approval").await?;
+
+    let initial_num_approvals = proxy_helper.view_num_approvals(&relayer_account).await?;
+    assert_eq!(
+        initial_num_approvals, 3,
+        "Initial num_approvals should be 3"
+    );
+
+    // Set num_approvals to 1 through a proposal
+    let set_approvals_action = vec![ProposalAction::SetNumApprovals { num_approvals: 1 }];
+    let set_approvals_proposal = proxy_helper.create_proposal_request(
+        &proxy_helper.generate_proposal_id(),
+        &alice_sk,
+        &set_approvals_action,
+    )?;
+
+    // First add two more members
+    let bob_sk = common::generate_keypair()?;
+    let charlie_sk = common::generate_keypair()?;
+    config_helper
+        .add_members(
+            &relayer_account,
+            &alice_sk,
+            &[bob_sk.clone(), charlie_sk.clone()],
+            &context_sk,
+        )
+        .await?;
+
+    // Execute the proposal to set num_approvals to 1
+    let res: ProposalWithApprovals = proxy_helper
+        .proxy_mutate(&relayer_account, &set_approvals_proposal)
+        .await?
+        .json()?;
+
+    // Approve by bob
+    let res: ProposalWithApprovals = proxy_helper
+        .approve_proposal(&relayer_account, &bob_sk.clone(), &res.proposal_id)
+        .await?
+        .json()?;
+
+    let res: Option<ProposalWithApprovals> = proxy_helper
+        .approve_proposal(&relayer_account, &charlie_sk.clone(), &res.proposal_id)
+        .await?
+        .json()?;
+    assert!(res.is_none(), "Proposal should be executed");
+
+    // Verify num_approvals was actually set to 1
+    let current_num_approvals = proxy_helper.view_num_approvals(&relayer_account).await?;
+    assert_eq!(current_num_approvals, 1, "num_approvals should be set to 1");
+
+    let counter_helper = CounterContractHelper::deploy_and_initialize(&worker).await?;
+
+    // Verify initial counter value is 0
+    let counter_value: u32 = counter_helper.get_value().await?;
+    assert_eq!(counter_value, 0);
+
+    // Create proposal to increment counter
+    let proposal_id = proxy_helper.generate_proposal_id();
+    let actions = vec![ProposalAction::ExternalFunctionCall {
+        receiver_id: counter_helper.counter_contract.id().to_string(),
+        method_name: "increment".to_string(),
+        args: serde_json::to_string(&Vec::<u8>::new())?,
+        deposit: 0,
+    }];
+
+    // Submit proposal as alice
+    let proposal = proxy_helper.create_proposal_request(&proposal_id, &alice_sk, &actions)?;
+
+    let res: Option<ProposalWithApprovals> = proxy_helper
+        .proxy_mutate(&relayer_account, &proposal)
+        .await?
+        .json()?;
+
+    assert!(
+        res.is_none(),
+        "Proposal should be executed immediately with single approval"
+    );
+
+    // Verify counter was incremented
+    let counter_value: u32 = counter_helper.get_value().await?;
+    assert_eq!(counter_value, 1);
+
+    Ok(())
+}
+
 async fn create_and_approve_proposal(
     proxy_helper: &ProxyContractHelper,
     relayer_account: &Account,
@@ -332,6 +440,7 @@ async fn create_and_approve_proposal(
     let proposal_id = proxy_helper.generate_proposal_id();
     let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], actions)?;
 
+    // First approval (by author)
     let res: ProposalWithApprovals = proxy_helper
         .proxy_mutate(&relayer_account, &proposal)
         .await?
@@ -343,15 +452,17 @@ async fn create_and_approve_proposal(
         proposal_id.rt().expect("infallible conversion")
     );
 
+    // Second approval
     let res: ProposalWithApprovals = proxy_helper
-        .approve_proposal(&relayer_account, &members[1], &res.proposal_id)
+        .approve_proposal(&relayer_account, &members[1], &proposal_id)
         .await?
         .json()?;
 
     assert_eq!(res.num_approvals, 2, "Proposal should have 2 approvals");
 
+    // Third approval (should execute)
     let res: Option<ProposalWithApprovals> = proxy_helper
-        .approve_proposal(&relayer_account, &members[2], &res.proposal_id)
+        .approve_proposal(&relayer_account, &members[2], &proposal_id)
         .await?
         .json()?;
 

@@ -954,3 +954,89 @@ fn test_proposal_limits_and_deletion() {
         "Should have exactly 2 active proposals"
     );
 }
+
+#[test]
+fn test_execute_with_single_approval() {
+    let ProxyTestContext {
+        env,
+        proxy_contract,
+        context_author_sk,
+        context_author_id,
+        signer2_sk,
+        signer2_id,
+        signer3_sk,
+        signer3_id,
+        ..
+    } = setup();
+
+    let client = ContextProxyContractClient::new(&env, &proxy_contract);
+
+    // First, verify the initial num_approvals is 3 (default)
+    let initial_num_approvals = client.get_num_approvals();
+    assert_eq!(initial_num_approvals, 3, "Initial num_approvals should be 3");
+
+    // Create a proposal to set num_approvals to 1
+    let (set_approvals_proposal_id, set_approvals_proposal) = create_test_proposal(
+        &env,
+        &proxy_contract,
+        &context_author_id,
+        vec![&env, StellarProposalAction::SetNumApprovals(1)],
+    );
+
+    // Submit the proposal
+    let request = StellarProxyMutateRequest::Propose(set_approvals_proposal);
+    let signed_request = create_signed_request(
+        &env,
+        &context_author_sk,
+        ProxySignedRequestPayload::Proxy(request),
+    );
+    
+    // First approval (by author)
+    let result = client.mutate(&signed_request);
+    let proposal_after_first = result.expect("Expected proposal with approvals to be returned");
+    assert_eq!(proposal_after_first.num_approvals, 1);
+
+    // Second approval (by signer2)
+    submit_approval(&env, &client, &set_approvals_proposal_id, &signer2_id, &signer2_sk, 2);
+
+    // Third approval (by signer3) - should execute the proposal
+    submit_approval(&env, &client, &set_approvals_proposal_id, &signer3_id, &signer3_sk, 0);
+
+    // Verify num_approvals was updated to 1
+    let updated_num_approvals = client.get_num_approvals();
+    assert_eq!(updated_num_approvals, 1, "num_approvals should be set to 1");
+
+    // Now test that a proposal executes with just one approval
+    let test_key = Bytes::from_slice(&env, "test_key".as_bytes());
+    let test_value = Bytes::from_slice(&env, "test_value".as_bytes());
+    
+    let (proposal_id, proposal) = create_test_proposal(
+        &env,
+        &proxy_contract,
+        &context_author_id,
+        vec![&env, StellarProposalAction::SetContextValue(test_key.clone(), test_value.clone())],
+    );
+
+    // Submit the proposal - should execute immediately with single approval
+    let request = StellarProxyMutateRequest::Propose(proposal);
+    let signed_request = create_signed_request(
+        &env,
+        &context_author_sk,
+        ProxySignedRequestPayload::Proxy(request),
+    );
+
+    let result = client.mutate(&signed_request);
+    assert!(result.is_none(), "Proposal should be executed immediately with single approval");
+
+    // Verify the context value was set
+    let stored_value = client.get_context_value(&test_key);
+    assert_eq!(
+        stored_value,
+        Some(test_value.clone()),
+        "Context value was not set correctly"
+    );
+
+    // Verify the proposal was removed after execution
+    let proposal = client.proposal(&proposal_id);
+    assert!(proposal.is_none(), "Proposal should be removed after execution");
+}
