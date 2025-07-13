@@ -61,7 +61,7 @@ impl ContextProxyContract {
         let state = ProxyState {
             context_id,
             context_config_id: owner,
-            num_approvals: 3,
+            num_approvals: 1,
             proposals: Map::new(&env),
             approvals: Map::new(&env),
             num_proposals_pk: Map::new(&env),
