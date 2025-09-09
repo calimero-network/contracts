@@ -37,7 +37,7 @@ semver = "1.0.22"
 serde = "1.0.196"
 serde_json = "1.0.113"
 thiserror = "1.0.56"
-tokio = "1.35.1"
+tokio = "1.44.2"
 
 calimero-context-config-near = { path = "./contracts/near/context-config" }
 
