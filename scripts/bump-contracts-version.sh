@@ -32,7 +32,7 @@ fi
 new_version="$1"
 
 # Handle rust contracts
-rust_protocols=("icp" "near" "stellar")
+rust_protocols=("icp" "near")
 for protocol in "${rust_protocols[@]}"; do
     echo "Updating version for protocol: ${protocol}"
     for contract in "contracts/${protocol}"/*; do

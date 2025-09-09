@@ -12,7 +12,5 @@ contracts/near/context-config/build.sh
 contracts/near/context-proxy/build-test-deps.sh
 contracts/icp/context-config/build.sh
 contracts/icp/context-proxy/build_contracts.sh
-contracts/stellar/context-config/build.sh
-contracts/stellar/context-proxy/build_contracts.sh
 
 cargo build --all-targets --tests
