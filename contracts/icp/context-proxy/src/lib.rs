@@ -37,7 +37,7 @@ fn init(context_id: ICRepr<ContextId>, ledger_id: Principal) {
         *contract.borrow_mut() = Some(ICProxyContract {
             context_id,
             context_config_id: ic_cdk::caller(),
-            num_approvals: 3,
+            num_approvals: 1,
             proposals: BTreeMap::new(),
             approvals: BTreeMap::new(),
             num_proposals_pk: BTreeMap::new(),
