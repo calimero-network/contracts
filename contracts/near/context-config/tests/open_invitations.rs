@@ -8,7 +8,6 @@ use calimero_context_config::{
         InvitationFromMember, RevealPayloadData, SignedOpenInvitation, SignedRevealPayload,
     }
 };
-use calimero_context_config_near::invitation::NEAR_PROTOCOL_TESTNET_ID;
 
 use near_sdk::{
     NearToken, borsh::{self}
@@ -216,11 +215,13 @@ async fn test_happy_path_self_reveal() -> eyre::Result<()> {
     let current_height = worker.view_block().await?.height();
     let random_salt: [u8; 32] = rng.gen::<[_; 32]>();
     let invitation = InvitationFromMember {
-        inviter_identity: alice_cx_id, //ContextIdentity(alice.public_key().as_bytes()[1..].try_into()?),
+        inviter_identity: alice_cx_id,
         context_id: *context_id.clone(),
         expiration_height: current_height + 1000,
         secret_salt: random_salt,
-        protocol: NEAR_PROTOCOL_TESTNET_ID,
+        protocol: "near".to_string(),
+        network: "devnet".to_string(),
+        contract_id: contract.id().to_string(),
     };
     let inviter_signature = sign_invitation(&invitation, &alice);
 
@@ -230,7 +231,7 @@ async fn test_happy_path_self_reveal() -> eyre::Result<()> {
             invitation,
             inviter_signature,
         },
-        new_member_identity: bob_cx_id, //ContextIdentity(bob.public_key().as_bytes()[1..].try_into()?),
+        new_member_identity: bob_cx_id,
     };
 
     // 3. ACT: Bob signs the data and creates a commitment hash.

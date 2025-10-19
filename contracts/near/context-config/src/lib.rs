@@ -5,7 +5,6 @@
 )]
 
 use calimero_context_config::types::{Application, ContextId, ContextIdentity};
-use calimero_context_config::repr::{Repr};
 use calimero_context_config::Timestamp;
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::store::{IterableMap, IterableSet, LazyOption};

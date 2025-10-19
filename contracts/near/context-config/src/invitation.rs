@@ -1,4 +1,4 @@
-use calimero_context_config::types::{ContextId, ContextIdentity, Identity, InvitationFromMember, RevealPayloadData, SignedRevealPayload, SignerId};
+use calimero_context_config::types::{ContextId, SignedRevealPayload, SignerId};
 use calimero_context_config::repr::{Repr, ReprBytes};
 
 use near_sdk::borsh::{self};
@@ -7,9 +7,6 @@ use near_sdk::{env, near, require, BlockHeight, CryptoHash};
 use super::{
     ContextConfigs, ContextConfigsExt,
 };
-
-pub const NEAR_PROTOCOL_MAINNET_ID: u8 = 0;
-pub const NEAR_PROTOCOL_TESTNET_ID: u8 = 100;
 
 pub type Ed25519Signature = [u8; 64];
 
@@ -67,16 +64,17 @@ impl ContextConfigs {
     pub fn reveal_invitation(&mut self, #[serializer(borsh)] payload: SignedRevealPayload) {
         //let payload = payload.into_inner();
         let payload_data = payload.data;
-        let invitation = payload_data.signed_open_invitation.invitation;
+        let invitation = payload_data.signed_open_invitation.invitation.clone();
         let context_id = invitation.context_id;
 
         // TODO: record whether it's mainnet or testnet contract on the contract creation and
         // verify against it.
         // TODO: verify maybe `protocol_name`, `contract_id`, similar to `ContextInvitationPayload`
         // fields.
-        require!(invitation.protocol == NEAR_PROTOCOL_MAINNET_ID
-            || invitation.protocol == NEAR_PROTOCOL_TESTNET_ID,
+        require!(invitation.protocol == "near",
             "The invitation was designated for another protocol");
+        require!(invitation.contract_id == env::current_account_id(),
+            "The invitation was designated for another contract");
 
         // Verify the context exists
         let context = self
