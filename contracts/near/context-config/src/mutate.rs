@@ -61,7 +61,10 @@ impl ContextConfigs {
             ContextRequestKind::UpdateProxyContract => {
                 let _is_sent_on_drop = self.update_proxy_contract(&request.signer_id, context_id);
             }
-            ContextRequestKind::CommitOpenInvitation { commitment_hash, expiration_block_height } => {
+            ContextRequestKind::CommitOpenInvitation {
+                commitment_hash,
+                expiration_block_height,
+            } => {
                 self.commit_invitation(context_id, commitment_hash, expiration_block_height);
             }
             ContextRequestKind::RevealOpenInvitation { payload } => {
@@ -110,7 +113,8 @@ impl ContextConfigs {
         let _ignored = member_nonces.insert(*author_id, 0);
 
         let used_open_invitations = IterableSet::new(Prefix::UsedOpenInvitations(*context_id));
-        let open_invitation_commitments = IterableMap::new(Prefix::CommitmentsOpenInvitations(*context_id));
+        let open_invitation_commitments =
+            IterableMap::new(Prefix::CommitmentsOpenInvitations(*context_id));
 
         // Create incremental account ID
         let account_id: AccountId = format!("{}.{}", self.next_proxy_id, env::current_account_id())
@@ -153,13 +157,13 @@ impl ContextConfigs {
             ),
             used_open_invitations: Guard::new(
                 Prefix::Privileges(PrivilegeScope::Context(
-                        *context_id,
-                        ContextPrivilegeScope::MemberList,
+                    *context_id,
+                    ContextPrivilegeScope::MemberList,
                 )),
                 author_id.rt().expect("invallible conversion"),
                 used_open_invitations,
             ),
-            commitments_open_invitations: open_invitation_commitments, 
+            commitments_open_invitations: open_invitation_commitments,
         };
 
         let _ignored = context.member_nonces.insert(*author_id, 0);

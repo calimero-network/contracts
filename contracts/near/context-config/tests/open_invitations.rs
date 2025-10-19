@@ -3,19 +3,15 @@ use calimero_context_config::types::{
     Application, Capability, ContextId, ContextIdentity, Signed, SignerId,
 };
 use calimero_context_config::{
+    types::{InvitationFromMember, RevealPayloadData, SignedOpenInvitation, SignedRevealPayload},
     ContextRequest, ContextRequestKind, Request, RequestKind,
-    types::{
-        InvitationFromMember, RevealPayloadData, SignedOpenInvitation, SignedRevealPayload,
-    }
 };
 
 use near_sdk::{
-    NearToken, borsh::{self}
+    borsh::{self},
+    NearToken,
 };
-use near_workspaces::{
-    Account, Contract, Worker,
-    network::Sandbox,
-};
+use near_workspaces::{network::Sandbox, Account, Contract, Worker};
 
 use ed25519_dalek::{Signer, SigningKey};
 use rand::Rng;
@@ -29,7 +25,8 @@ use tokio::fs;
 /// Helper to sign a payload with a given secret key.
 fn sign_payload(payload: &RevealPayloadData, account: &Account) -> String {
     let secret_key_near = get_near_secret_key_from_account(account);
-    let signer = near_crypto::InMemorySigner::from_secret_key(account.id().clone(), secret_key_near);
+    let signer =
+        near_crypto::InMemorySigner::from_secret_key(account.id().clone(), secret_key_near);
 
     let bytes = borsh::to_vec(payload).unwrap();
     let hash = Sha256::digest(&bytes);
@@ -42,7 +39,8 @@ fn sign_payload(payload: &RevealPayloadData, account: &Account) -> String {
 /// Helper to sign an invitation with a given secret key.
 fn sign_invitation(invitation: &InvitationFromMember, account: &Account) -> String {
     let secret_key_near = get_near_secret_key_from_account(account);
-    let signer = near_crypto::InMemorySigner::from_secret_key(account.id().clone(), secret_key_near);
+    let signer =
+        near_crypto::InMemorySigner::from_secret_key(account.id().clone(), secret_key_near);
 
     let bytes = borsh::to_vec(invitation).unwrap();
     let hash = Sha256::digest(&bytes);
@@ -53,9 +51,7 @@ fn sign_invitation(invitation: &InvitationFromMember, account: &Account) -> Stri
 }
 
 fn get_near_secret_key_from_account(account: &Account) -> near_crypto::SecretKey {
-    near_crypto::SecretKey::from_str(
-        account.secret_key().to_string().as_str()
-    )
+    near_crypto::SecretKey::from_str(account.secret_key().to_string().as_str())
         .expect("Conversion to NEAR sk failed")
 }
 
@@ -64,25 +60,26 @@ fn get_public_key_data_from_account(account: &Account) -> [u8; 32] {
 
     let key_slice = public_key.key_data();
 
-    let key_data: [u8; 32] = key_slice
-        .try_into()
-        .expect("key is not 32 bytes long");
+    let key_data: [u8; 32] = key_slice.try_into().expect("key is not 32 bytes long");
     key_data
 }
 
 fn create_account_with_new_key(worker: &Worker<Sandbox>, new_account_id: &str) -> Account {
-    let secret_key = near_workspaces::types::SecretKey::from_random(near_workspaces::types::KeyType::ED25519);
+    let secret_key =
+        near_workspaces::types::SecretKey::from_random(near_workspaces::types::KeyType::ED25519);
     Account::from_secret_key(new_account_id.parse().unwrap(), secret_key, worker)
 }
 
-async fn create_subaccount_with_new_key_from(account: &Account, new_account_id: &str) -> eyre::Result<Account> {
+async fn create_subaccount_with_new_key_from(
+    account: &Account,
+    new_account_id: &str,
+) -> eyre::Result<Account> {
     Ok(account
         .create_subaccount(new_account_id)
         .initial_balance(NearToken::from_near(30))
         .transact()
         .await?
-        .into_result()?
-    )
+        .into_result()?)
 }
 
 /// Boilerplate setup for tests.
@@ -101,7 +98,6 @@ async fn setup() -> eyre::Result<(Worker<Sandbox>, Contract, Account, Account, R
         .transact()
         .await?
         .into_result()?;
-
 
     //
     // Create identities and accounts
@@ -207,7 +203,10 @@ async fn test_happy_path_self_reveal() -> eyre::Result<()> {
     //let bob = worker.dev_create_account().await?;
     let bob_cx_id = get_public_key_data_from_account(&bob).rt()?;
 
-    assert_ne!(alice_cx_id, bob_cx_id, "Alice and Bob should have different identities");
+    assert_ne!(
+        alice_cx_id, bob_cx_id,
+        "Alice and Bob should have different identities"
+    );
 
     let mut rng = rand::thread_rng();
 
@@ -268,7 +267,10 @@ async fn test_happy_path_self_reveal() -> eyre::Result<()> {
     println!("{:?}", reveal_res.logs());
     println!("{:?}", reveal_res.clone().into_result());
     assert!(reveal_res.is_success());
-    assert!(reveal_res.logs().iter().any(|log| log.contains("successfully joined context")));
+    assert!(reveal_res
+        .logs()
+        .iter()
+        .any(|log| log.contains("successfully joined context")));
 
     Ok(())
 }

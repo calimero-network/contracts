@@ -1,19 +1,17 @@
-use calimero_context_config::types::{ContextId, SignedRevealPayload, SignerId};
 use calimero_context_config::repr::{Repr, ReprBytes};
+use calimero_context_config::types::{ContextId, SignedRevealPayload, SignerId};
 
 use near_sdk::borsh::{self};
 use near_sdk::{env, near, require, BlockHeight, CryptoHash};
 
-use super::{
-    ContextConfigs, ContextConfigsExt,
-};
+use super::{ContextConfigs, ContextConfigsExt};
 
 pub type Ed25519Signature = [u8; 64];
 
 #[near]
 impl ContextConfigs {
     /// ### Step 1: Commit Invitation
-    /// 
+    ///
     /// Anonymously commits to a hash of a future reveal payload. This action allows to
     /// prevent MEV attacks. This can be called by the new member (invitee) directly or by a relayer
     /// on their behalf.
@@ -22,7 +20,12 @@ impl ContextConfigs {
     ///
     /// * `context_id`: The `ContextId` for which the commitment is being made.
     /// * `commitment_hash`: A hex-encoded SHA-256 hash of the `RevealPayloadData`.
-    pub fn commit_invitation(&mut self, context_id: Repr<ContextId>, commitment_hash: String, expiration_block_height: BlockHeight) {
+    pub fn commit_invitation(
+        &mut self,
+        context_id: Repr<ContextId>,
+        commitment_hash: String,
+        expiration_block_height: BlockHeight,
+    ) {
         let context = self
             .contexts
             .get_mut(&context_id)
@@ -34,7 +37,9 @@ impl ContextConfigs {
             .expect("Hash must be 32 bytes");
 
         require!(
-            !context.commitments_open_invitations.contains_key(&hash_bytes),
+            !context
+                .commitments_open_invitations
+                .contains_key(&hash_bytes),
             "This commitment has already been made"
         );
 
@@ -44,12 +49,17 @@ impl ContextConfigs {
             "This invitation is already expired"
         );
 
-        let _ = context.commitments_open_invitations.insert(hash_bytes, expiration_block_height);
+        let _ = context
+            .commitments_open_invitations
+            .insert(hash_bytes, expiration_block_height);
 
         // TODO: do we need to manually do it to persist the updated context state?
         //self.contexts.insert(&context_id, &context);
-        
-        env::log_str(&format!("Successfully committed the invitation image {} in context {}", commitment_hash, context_id));
+
+        env::log_str(&format!(
+            "Successfully committed the invitation image {} in context {}",
+            commitment_hash, context_id
+        ));
     }
 
     /// ### Step 2: Reveal Invitation
@@ -71,10 +81,14 @@ impl ContextConfigs {
         // verify against it.
         // TODO: verify maybe `protocol_name`, `contract_id`, similar to `ContextInvitationPayload`
         // fields.
-        require!(invitation.protocol == "near",
-            "The invitation was designated for another protocol");
-        require!(invitation.contract_id == env::current_account_id(),
-            "The invitation was designated for another contract");
+        require!(
+            invitation.protocol == "near",
+            "The invitation was designated for another protocol"
+        );
+        require!(
+            invitation.contract_id == env::current_account_id(),
+            "The invitation was designated for another contract"
+        );
 
         // Verify the context exists
         let context = self
@@ -83,13 +97,18 @@ impl ContextConfigs {
             .expect("Context does not exist");
 
         // 1. Hash the revealed data to find the original commitment.
-        let payload_data_bytes = borsh::to_vec(&payload_data).expect("Failed to serialize payload data");
+        let payload_data_bytes =
+            borsh::to_vec(&payload_data).expect("Failed to serialize payload data");
         let payload_data_hash_vec = env::sha256(&payload_data_bytes);
         let payload_data_hash: CryptoHash = payload_data_hash_vec.clone().try_into().unwrap();
 
         // 2. Remove the commitment using the hash, which also serves as a replay-prevention step.
-        let _ = context.commitments_open_invitations.remove(&payload_data_hash)
-            .expect("No matching commitment found. It may have expired, been invalid, or already used");
+        let _ = context
+            .commitments_open_invitations
+            .remove(&payload_data_hash)
+            .expect(
+                "No matching commitment found. It may have expired, been invalid, or already used",
+            );
         // TODO: consider expiring immediately if the commitment image was not found?
 
         // Check if the invitation has expired.
@@ -99,7 +118,10 @@ impl ContextConfigs {
         );
 
         // Check if the invitee is already in the context.
-        require!(!context.members.contains(&payload_data.new_member_identity), "Member already in context");
+        require!(
+            !context.members.contains(&payload_data.new_member_identity),
+            "Member already in context"
+        );
 
         // 4. Authenticate the new member by verifying their signature over the payload data.
         let new_member_signature_bytes: Ed25519Signature = hex::decode(payload.invitee_signature)
@@ -107,21 +129,30 @@ impl ContextConfigs {
             .try_into()
             .expect("Invalid signature length");
         require!(
-            env::ed25519_verify(&new_member_signature_bytes, &payload_data_hash_vec, &payload_data.new_member_identity.as_bytes()),
+            env::ed25519_verify(
+                &new_member_signature_bytes,
+                &payload_data_hash_vec,
+                &payload_data.new_member_identity.as_bytes()
+            ),
             "New member's signature is invalid."
         );
-        
+
         // 5. Verify the inviter's signed invitation.
         let inviter_identity = invitation.inviter_identity;
-        let inviter_signature_bytes = hex::decode(payload_data.signed_open_invitation.inviter_signature)
-            .expect("Invalid hex inviter signature")
-            .try_into()
-            .expect("Invalid signature length");
+        let inviter_signature_bytes =
+            hex::decode(payload_data.signed_open_invitation.inviter_signature)
+                .expect("Invalid hex inviter signature")
+                .try_into()
+                .expect("Invalid signature length");
 
         // Check inviter's signature.
         let invitation_bytes = borsh::to_vec(&invitation).expect("Failed to serialize invitation");
         require!(
-            env::ed25519_verify(&inviter_signature_bytes, &env::sha256(&invitation_bytes), &inviter_identity.as_bytes()),
+            env::ed25519_verify(
+                &inviter_signature_bytes,
+                &env::sha256(&invitation_bytes),
+                &inviter_identity.as_bytes()
+            ),
             "Inviter's signature is invalid"
         );
 
@@ -131,8 +162,8 @@ impl ContextConfigs {
             .expect("infallible conversion");
 
         // This hack is needed as we don't have normal `From` implemnetations for `Identity`/`SignerId`.
-        let inviter_identity_borsh = borsh::to_vec(&inviter_identity)
-            .expect("Failed to serialize inviter identity");
+        let inviter_identity_borsh =
+            borsh::to_vec(&inviter_identity).expect("Failed to serialize inviter identity");
         let inviter_signer_id: SignerId = borsh::from_slice(&inviter_identity_borsh)
             .expect("Failed to deserialize inviter identity");
 
@@ -153,7 +184,7 @@ impl ContextConfigs {
         //    "The inviter does not have permission to add members."
         //);
 
-        let mut context_members= context
+        let mut context_members = context
             .members
             .get(&inviter_signer_id)
             //.get(payload_data.invitation.inviter_identity.as_bytes().into())
@@ -165,6 +196,10 @@ impl ContextConfigs {
         // TODO: do we need to update member nonces?
         //context.member_nonces.insert(payload_data.new_member_identity, 0);
 
-        env::log_str(&format!("Account {} successfully joined context {}", Repr::new(payload_data.new_member_identity), Repr::new(context_id)));
+        env::log_str(&format!(
+            "Account {} successfully joined context {}",
+            Repr::new(payload_data.new_member_identity),
+            Repr::new(context_id)
+        ));
     }
 }
