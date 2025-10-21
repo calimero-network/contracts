@@ -106,9 +106,7 @@ contract ContextConfigTest is Test {
         }
 
         ContextConfig.ContextRequest memory contextRequest = ContextConfig.ContextRequest({
-            contextId: contextId,
-            kind: ContextConfig.ContextRequestKind.Add,
-            data: abi.encode(authorId, app)
+            contextId: contextId, kind: ContextConfig.ContextRequestKind.Add, data: abi.encode(authorId, app)
         });
 
         ContextConfig.Request memory request = ContextConfig.Request({
@@ -199,9 +197,7 @@ contract ContextConfigTest is Test {
         }
 
         ContextConfig.ContextRequest memory addMembersRequest = ContextConfig.ContextRequest({
-            contextId: contextId,
-            kind: ContextConfig.ContextRequestKind.AddMembers,
-            data: abi.encode(newMembers)
+            contextId: contextId, kind: ContextConfig.ContextRequestKind.AddMembers, data: abi.encode(newMembers)
         });
 
         ContextConfig.Request memory request = ContextConfig.Request({
@@ -547,9 +543,7 @@ contract ContextConfigTest is Test {
 
         // Try with a lower nonce (should fail with InvalidNonce)
         ContextConfig.ContextRequest memory addMembersRequest = ContextConfig.ContextRequest({
-            contextId: contextId,
-            kind: ContextConfig.ContextRequestKind.AddMembers,
-            data: abi.encode(newMembers)
+            contextId: contextId, kind: ContextConfig.ContextRequestKind.AddMembers, data: abi.encode(newMembers)
         });
 
         ContextConfig.Request memory request = ContextConfig.Request({

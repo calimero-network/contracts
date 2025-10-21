@@ -109,9 +109,7 @@ contract ContextProxyTest is Test {
             ContextConfig.Application({id: bytes32(0), blob: bytes32(0), size: 0, source: "test", metadata: bytes("")});
 
         ContextConfig.ContextRequest memory contextRequest = ContextConfig.ContextRequest({
-            contextId: _contextId,
-            kind: ContextConfig.ContextRequestKind.Add,
-            data: abi.encode(_memberId, app)
+            contextId: _contextId, kind: ContextConfig.ContextRequestKind.Add, data: abi.encode(_memberId, app)
         });
 
         ContextConfig.Request memory request = ContextConfig.Request({
@@ -143,9 +141,7 @@ contract ContextProxyTest is Test {
         bytes memory membersData = abi.encode(_members);
 
         ContextConfig.ContextRequest memory contextRequest = ContextConfig.ContextRequest({
-            contextId: _contextId,
-            kind: ContextConfig.ContextRequestKind.AddMembers,
-            data: membersData
+            contextId: _contextId, kind: ContextConfig.ContextRequestKind.AddMembers, data: membersData
         });
 
         // Get ECDSA public key from private key
@@ -231,7 +227,10 @@ contract ContextProxyTest is Test {
         bytes32 proposalId,
         bytes32 userId, // Ed25519 ID
         uint256 signerPrivateKey // ECDSA private key
-    ) internal returns (ContextProxy.ProposalWithApprovals memory) {
+    )
+        internal
+        returns (ContextProxy.ProposalWithApprovals memory)
+    {
         ContextProxy.ProposalApprovalWithSigner memory approval =
             ContextProxy.ProposalApprovalWithSigner({proposalId: proposalId, userId: userId});
 
@@ -262,8 +261,7 @@ contract ContextProxyTest is Test {
         // Create a Transfer action
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.Transfer,
-            data: abi.encode(recipient, transferAmount)
+            kind: ContextProxy.ProposalActionKind.Transfer, data: abi.encode(recipient, transferAmount)
         });
 
         // Submit proposal as member1
@@ -389,8 +387,7 @@ contract ContextProxyTest is Test {
         // Create a SetNumApprovals action
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetNumApprovals,
-            data: abi.encode(newApprovals)
+            kind: ContextProxy.ProposalActionKind.SetNumApprovals, data: abi.encode(newApprovals)
         });
 
         // Member1 submits proposal
@@ -416,8 +413,7 @@ contract ContextProxyTest is Test {
         // Create a SetContextValue action
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode(key, value)
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode(key, value)
         });
 
         // Submit proposal as member1
@@ -461,8 +457,7 @@ contract ContextProxyTest is Test {
 
             ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
             actions[0] = ContextProxy.ProposalAction({
-                kind: ContextProxy.ProposalActionKind.SetContextValue,
-                data: abi.encode(keys[i], values[i])
+                kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode(keys[i], values[i])
             });
 
             // Submit and approve proposal
@@ -497,8 +492,7 @@ contract ContextProxyTest is Test {
         // Create a SetActiveProposalsLimit action
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetActiveProposalsLimit,
-            data: abi.encode(newLimit)
+            kind: ContextProxy.ProposalActionKind.SetActiveProposalsLimit, data: abi.encode(newLimit)
         });
 
         // Submit and approve the limit change proposal
@@ -514,8 +508,7 @@ contract ContextProxyTest is Test {
         // Now create first proposal (transfer proposal)
         bytes32 proposal1Id = keccak256("proposal1");
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.Transfer,
-            data: abi.encode(address(0x123), 1 ether)
+            kind: ContextProxy.ProposalActionKind.Transfer, data: abi.encode(address(0x123), 1 ether)
         });
 
         result = submitProposal(proposal1Id, member1Id, member1PrivateKey, actions);
@@ -523,8 +516,7 @@ contract ContextProxyTest is Test {
         // Create second proposal (context value proposal)
         bytes32 proposal2Id = keccak256("proposal2");
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode("key", "value")
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode("key", "value")
         });
 
         result = submitProposal(proposal2Id, member1Id, member1PrivateKey, actions);
@@ -539,7 +531,9 @@ contract ContextProxyTest is Test {
                 abi.encode(ContextProxy.Proposal({id: proposal3Id, authorId: member1Id, actions: actions})),
                 ContextProxy.RequestKind.Propose
             )
-        ) returns (ContextProxy.ProposalWithApprovals memory) {
+        ) returns (
+            ContextProxy.ProposalWithApprovals memory
+        ) {
             success = true;
         } catch {
             success = false;
@@ -549,8 +543,7 @@ contract ContextProxyTest is Test {
 
         // Delete proposal1 directly
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.DeleteProposal,
-            data: abi.encode(proposal1Id)
+            kind: ContextProxy.ProposalActionKind.DeleteProposal, data: abi.encode(proposal1Id)
         });
 
         result = submitProposal(keccak256("delete-proposal"), member1Id, member1PrivateKey, actions);
@@ -558,8 +551,7 @@ contract ContextProxyTest is Test {
         // Now we should be able to create a new proposal
         bytes32 newProposalId = keccak256("new-proposal");
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode("new_key", "new_value")
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode("new_key", "new_value")
         });
 
         result = submitProposal(newProposalId, member1Id, member1PrivateKey, actions);
@@ -575,7 +567,9 @@ contract ContextProxyTest is Test {
                 abi.encode(ContextProxy.Proposal({id: oneMoreProposalId, authorId: member1Id, actions: actions})),
                 ContextProxy.RequestKind.Propose
             )
-        ) returns (ContextProxy.ProposalWithApprovals memory) {
+        ) returns (
+            ContextProxy.ProposalWithApprovals memory
+        ) {
             success = true;
         } catch {
             success = false;
@@ -592,8 +586,7 @@ contract ContextProxyTest is Test {
         bytes32 proposalId = keccak256("test-proposal");
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode("test_key", "test_value")
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode("test_key", "test_value")
         });
 
         ContextProxy.ProposalWithApprovals memory result =
@@ -639,8 +632,7 @@ contract ContextProxyTest is Test {
         // Test functionality with new implementation
         bytes32 newProposalId = keccak256("post-upgrade-proposal");
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode("new_key", "new_value")
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode("new_key", "new_value")
         });
 
         result = submitProposal(newProposalId, member1Id, member1PrivateKey, actions);
@@ -654,8 +646,7 @@ contract ContextProxyTest is Test {
         // Create a proposal first
         ContextProxy.ProposalAction[] memory actions = new ContextProxy.ProposalAction[](1);
         actions[0] = ContextProxy.ProposalAction({
-            kind: ContextProxy.ProposalActionKind.SetContextValue,
-            data: abi.encode("test_key", "test_value")
+            kind: ContextProxy.ProposalActionKind.SetContextValue, data: abi.encode("test_key", "test_value")
         });
 
         submitProposal(proposalId, member1Id, member1PrivateKey, actions);

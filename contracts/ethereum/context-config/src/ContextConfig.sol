@@ -60,7 +60,6 @@ contract ContextConfig {
 
     enum RequestKind {
         Context // Wraps ContextRequest
-
     }
 
     enum Capability {
@@ -77,7 +76,6 @@ contract ContextConfig {
         RevokeCapability, // (bytes32 memberId, Capability capability)
         UpdateProxy, // (no data needed, deploys proxy if not already deployed)
         UpdateApplication // (Application newApplication)
-
     }
 
     struct ContextRequest {
