@@ -13,6 +13,7 @@ crate-type = ["rlib", "cdylib"]
 calimero-context-config.workspace = true
 cfg-if.workspace = true
 near-sdk = { workspace = true, features = ["unstable"] }
+hex = "0.4.3"
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
@@ -22,6 +23,8 @@ near-workspaces.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+
+sha2 = "0.10"
 
 [lints]
 workspace = true

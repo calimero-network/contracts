@@ -8,7 +8,9 @@ use calimero_context_config::types::{Application, ContextId, ContextIdentity};
 use calimero_context_config::Timestamp;
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::store::{IterableMap, IterableSet, LazyOption};
-use near_sdk::{near, AccountId, BorshStorageKey};
+use near_sdk::{near, AccountId, BlockHeight, BorshStorageKey, CryptoHash};
+
+pub mod invitation;
 
 mod guard;
 mod mutate;
@@ -41,6 +43,10 @@ struct Context {
     pub members: Guard<IterableSet<ContextIdentity>>,
     pub member_nonces: IterableMap<ContextIdentity, u64>,
     pub proxy: Guard<AccountId>,
+    /// A set of used open invitation signatures.
+    pub used_open_invitations: Guard<IterableSet<CryptoHash>>,
+    /// A map that stores pending commitments for the given context.
+    pub commitments_open_invitations: IterableMap<CryptoHash, BlockHeight>,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]
@@ -52,6 +58,8 @@ enum Prefix {
     Privileges(PrivilegeScope) = 3,
     ProxyCode = 4,
     MemberNonces(ContextId) = 5,
+    UsedOpenInvitations(ContextId) = 6,
+    CommitmentsOpenInvitations(ContextId) = 7,
 }
 
 #[derive(Copy, Clone, Debug)]
