@@ -54,9 +54,8 @@ jobs:
       - name: Cargo format
         shell: bash
         run: |
-          rustup toolchain install nightly
-          rustup component add rustfmt --toolchain nightly
-          cargo +nightly fmt -- --check
+          rustup component add rustfmt
+          cargo fmt --check
 
       - name: Cargo clippy
         run: cargo clippy -- -A warnings
