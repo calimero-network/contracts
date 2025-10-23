@@ -47,6 +47,7 @@ impl ContextConfigs {
 
         self.next_proxy_id = 0;
         self.proxy_code.set(None);
+        self.proxy_code_hash.set(None);
 
         env::log_str(&format!(
             "Post-erase storage usage: {}",
@@ -56,8 +57,32 @@ impl ContextConfigs {
 
     #[private]
     pub fn set_proxy_code(&mut self) {
-        self.proxy_code
-            .set(Some(env::input().expect("Expected proxy code")));
+        let input = env::input().expect("Expected proxy code");
+        let code_hash = env::sha256(&input);
+        let code_hash_hex = hex::encode(code_hash.clone());
+
+        env::log_str(&format!("Proxy code hash: `{}`", code_hash_hex));
+
+        self.proxy_code_hash.set(Some(
+            code_hash
+                .try_into()
+                .expect("Infallible conversion: SHA256 hash should be always 32 bytes long."),
+        ));
+        self.proxy_code.set(Some(input));
+    }
+
+    /// Retrieves a hash for the proxy contract if it exists.
+    /// If the proxy code is not set, returns an empty string.
+    ///
+    /// # Returns
+    /// * a hex-encoded string containing the hash of the proxy code.
+    /// * an empty string if the proxy code hash is not set.
+    pub fn get_proxy_code_hash(&self) -> String {
+        if let Some(proxy_code_hash) = self.proxy_code_hash.get() {
+            hex::encode(proxy_code_hash)
+        } else {
+            String::new()
+        }
     }
 }
 

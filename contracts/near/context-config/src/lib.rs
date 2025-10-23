@@ -27,6 +27,7 @@ pub struct ContextConfigs {
     contexts: IterableMap<ContextId, Context>,
     config: Config,
     proxy_code: LazyOption<Vec<u8>>,
+    proxy_code_hash: LazyOption<CryptoHash>,
     next_proxy_id: u64,
 }
 
@@ -57,9 +58,10 @@ enum Prefix {
     Members(ContextId) = 2,
     Privileges(PrivilegeScope) = 3,
     ProxyCode = 4,
-    MemberNonces(ContextId) = 5,
-    UsedOpenInvitations(ContextId) = 6,
-    CommitmentsOpenInvitations(ContextId) = 7,
+    ProxyCodeHash = 5,
+    MemberNonces(ContextId) = 6,
+    UsedOpenInvitations(ContextId) = 7,
+    CommitmentsOpenInvitations(ContextId) = 8,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -84,6 +86,7 @@ impl Default for ContextConfigs {
                 validity_threshold_ms: DEFAULT_VALIDITY_THRESHOLD_MS,
             },
             proxy_code: LazyOption::new(Prefix::ProxyCode, None),
+            proxy_code_hash: LazyOption::new(Prefix::ProxyCodeHash, None),
             next_proxy_id: 0,
         }
     }
