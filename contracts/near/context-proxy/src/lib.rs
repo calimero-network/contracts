@@ -65,7 +65,7 @@ impl ProxyContract {
             proposals: IterableMap::new(b"r".to_vec()),
             approvals: IterableMap::new(b"c".to_vec()),
             num_proposals_pk: IterableMap::new(b"k".to_vec()),
-            num_approvals: 3,
+             num_approvals: 1,
             active_proposals_limit: 10,
             context_storage: IterableMap::new(b"l"),
             code_size: (env::storage_usage(), None),
