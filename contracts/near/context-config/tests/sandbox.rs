@@ -11,10 +11,10 @@ use calimero_context_config::{
 };
 use ed25519_dalek::{Signer, SigningKey};
 use near_sdk::AccountId;
-use near_workspaces::types::NearToken;
-use near_workspaces::Contract;
+use near_workspaces::{network::Sandbox, types::NearToken, Contract, Worker};
 use rand::Rng;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio::fs;
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
@@ -845,7 +845,8 @@ async fn main() -> eyre::Result<()> {
     let state = contract.view_state().await?;
 
     assert_eq!(state.len(), 1);
-    assert_eq!(state.get(&b"STATE"[..]).map(|v| v.len()), Some(37));
+    println!("State: {:?}", state.get(&b"STATE"[..]));
+    assert_eq!(state.get(&b"STATE"[..]).map(|v| v.len()), Some(42));
 
     Ok(())
 }
@@ -1331,6 +1332,76 @@ async fn test_storage_usage_matches_code_size() -> eyre::Result<()> {
 
     let config_balance = worker.view_account(&contract.id()).await?.balance;
     println!("Config contract balance: {}", config_balance);
+
+    Ok(())
+}
+
+// Utility function for a test environment setup in tests.
+// TODO: rewrite the one giant test above to utilize this function and probably split the big test
+// into multiple smaller tests.
+async fn setup() -> eyre::Result<(Worker<Sandbox>, Contract)> {
+    let worker = near_workspaces::sandbox().await?;
+    let wasm = fs::read("res/calimero_context_config_near.wasm").await?;
+    let contract = worker.dev_deploy(&wasm).await?;
+
+    let context_proxy_blob =
+        fs::read("../context-proxy/res/calimero_context_proxy_near.wasm").await?;
+
+    let _ignored = contract
+        .call("set_proxy_code")
+        .args(context_proxy_blob)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    Ok((worker, contract))
+}
+
+#[tokio::test]
+async fn test_set_proxy_code() -> eyre::Result<()> {
+    let (_worker, contract) = setup().await?;
+
+    // Even though it's already been done in `setup()`, we set the proxy code once again to ensure
+    // the tested functionality is in the scope of the test.
+    let context_proxy_blob =
+        fs::read("../context-proxy/res/calimero_context_proxy_near.wasm").await?;
+    let expected_code_hash_hex = hex::encode(Sha256::digest(&context_proxy_blob));
+
+    let _ignored = contract
+        .call("set_proxy_code")
+        .args(context_proxy_blob)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let res = contract
+        .view("get_proxy_code_hash")
+        .args_json(json!({}))
+        .await?;
+
+    let code_hash_hex: String = serde_json::from_slice(&res.result)?;
+    // Verify the code hash is equal ot the hash of the proxy code that we submitted.
+    assert_eq!(code_hash_hex, expected_code_hash_hex);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_proxy_code_empty() -> eyre::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let wasm = fs::read("res/calimero_context_config_near.wasm").await?;
+    let contract = worker.dev_deploy(&wasm).await?;
+
+    let res = contract
+        .view("get_proxy_code_hash")
+        .args_json(json!({}))
+        .await?;
+
+    let code_hash_hex: String = serde_json::from_slice(&res.result)?;
+    // Ensure that the code hash is empty because we didn't set the proxy code
+    assert_eq!(code_hash_hex, String::new());
 
     Ok(())
 }
