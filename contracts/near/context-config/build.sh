@@ -12,7 +12,7 @@ if [ "$1" = "--migration" ]; then
   extra_args="--features migrations,$selected_migration"
 fi
 
-cargo build --target wasm32-unknown-unknown --profile app-release $extra_args
+RUSTFLAGS="--remap-path-prefix $HOME=~" cargo build --target wasm32-unknown-unknown --profile app-release $extra_args
 
 mkdir -p res
 
