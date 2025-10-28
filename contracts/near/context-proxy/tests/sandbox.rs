@@ -13,6 +13,8 @@ use near_sdk::{AccountId, NearToken};
 use near_workspaces::network::Sandbox;
 use near_workspaces::{Account, Worker};
 
+use crate::common::counter_helper;
+
 mod common;
 
 async fn setup_test(
@@ -323,45 +325,98 @@ async fn setup_action_test(
     Ok((proxy_helper, relayer_account, members))
 }
 
-async fn create_and_approve_proposal(
-    proxy_helper: &ProxyContractHelper,
-    relayer_account: &Account,
-    actions: &Vec<ProposalAction>,
-    members: Vec<SigningKey>,
-) -> Result<()> {
-    let proposal_id = proxy_helper.generate_proposal_id();
-    let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], actions)?;
+ async fn create_and_approve_proposal(
+     proxy_helper: &ProxyContractHelper,
+     relayer_account: &Account,
+     actions: &Vec<ProposalAction>,
+     members: Vec<SigningKey>,
+     num_approvals: u32,
+ ) -> Result<()> {
+     let proposal_id = proxy_helper.generate_proposal_id();
+     let proposal = proxy_helper.create_proposal_request(&proposal_id, &members[0], actions)?;
 
-    let res: ProposalWithApprovals = proxy_helper
-        .proxy_mutate(&relayer_account, &proposal)
-        .await?
-        .json()?;
+     let res: Option<ProposalWithApprovals> = proxy_helper
+         .proxy_mutate(&relayer_account, &proposal)
+         .await?
+         .json()?;
 
-    assert_eq!(res.num_approvals, 1);
+     if num_approvals == 1 {
+         // For 1 approval, it should execute immediately after creation
+         assert!(
+             res.is_none(),
+             "Proposal should be removed after the execution with 1 approval"
+         );
+     } else {
+         // For more than 1, it should not execute yet
+         assert!(res.is_some());
+         let res = res.unwrap();
+         assert_eq!(res.num_approvals, 1);
+         assert_eq!(
+             res.proposal_id,
+             proposal_id.rt().expect("infallible conversion")
+         );
+
+         if num_approvals > 1 {
+             let res: ProposalWithApprovals = proxy_helper
+                 .approve_proposal(&relayer_account, &members[1], &res.proposal_id)
+                 .await?
+                 .json()?;
+
+             assert_eq!(res.num_approvals, 2, "Proposal should have 2 approvals");
+         }
+
+         if num_approvals > 2 {
+             let res: Option<ProposalWithApprovals> = proxy_helper
+                 .approve_proposal(&relayer_account, &members[2], &res.proposal_id)
+                 .await?
+                 .json()?;
+
+             assert!(
+                 res.is_none(),
+                 "Proposal should be removed after the execution"
+             );
+         }
+     }
+
+     Ok(())
+ }
+
+#[tokio::test]
+async fn test_single_approval() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let (proxy_helper, relayer_account, members) = setup_action_test(&worker).await?;
+
+    // First, set num_approvals to 1
+    let set_threshold_actions = vec![ProposalAction::SetNumApprovals { num_approvals: 1 }];
+    create_and_approve_proposal(&proxy_helper, &relayer_account, &set_threshold_actions, members.clone(), 3).await?;
+
+    let counter_helper = CounterContractHelper::deploy_and_initialize(&worker).await?;
+
+    let counter_value: u32 = counter_helper.get_value().await?;
     assert_eq!(
-        res.proposal_id,
-        proposal_id.rt().expect("infallible conversion")
+        counter_value, 0,
+        "Counter should be zero before proposal execution"
     );
 
-    let res: ProposalWithApprovals = proxy_helper
-        .approve_proposal(&relayer_account, &members[1], &res.proposal_id)
-        .await?
-        .json()?;
+    let actions = vec![ProposalAction::ExternalFunctionCall {
+        receiver_id: counter_helper.counter_contract.id().to_string(),
+        method_name: "increment".to_string(),
+        args: serde_json::to_string(&Vec::<u8>::new())?,
+        deposit: 0,
+    }];
 
-    assert_eq!(res.num_approvals, 2, "Proposal should have 2 approvals");
+    // Now test with 1 approval
+    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 1).await?;
 
-    let res: Option<ProposalWithApprovals> = proxy_helper
-        .approve_proposal(&relayer_account, &members[2], &res.proposal_id)
-        .await?
-        .json()?;
-
-    assert!(
-        res.is_none(),
-        "Proposal should be removed after the execution"
+    let counter_value: u32 = counter_helper.get_value().await?;
+    assert_eq!(
+        counter_value, 1,
+        "Counter should be incremented by the proposal execution with 1 approval"
     );
 
     Ok(())
 }
+
 
 #[tokio::test]
 async fn test_execute_proposal() -> Result<()> {
@@ -383,7 +438,7 @@ async fn test_execute_proposal() -> Result<()> {
         deposit: 0,
     }];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let counter_value: u32 = counter_helper.get_value().await?;
     assert_eq!(
@@ -408,7 +463,7 @@ async fn test_action_change_active_proposals_limit() -> Result<()> {
         active_proposals_limit: 6,
     }];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let new_active_proposals_limit: u32 = proxy_helper
         .view_active_proposals_limit(&relayer_account)
@@ -428,7 +483,7 @@ async fn test_action_change_number_of_approvals() -> Result<()> {
 
     let actions = vec![ProposalAction::SetNumApprovals { num_approvals: 2 }];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let new_num_approvals: u32 = proxy_helper.view_num_approvals(&relayer_account).await?;
     assert_eq!(new_num_approvals, 2);
@@ -454,7 +509,7 @@ async fn test_mutate_storage_value() -> Result<()> {
         value: value_data.clone(),
     }];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let storage_value: Box<[u8]> = proxy_helper
         .view_context_value(&relayer_account, key_data.clone())
@@ -495,7 +550,7 @@ async fn test_transfer() -> Result<()> {
         amount: 5_000_000_000_000_000_000_000_000, // 5 NEAR
     }];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let recipient_balance = recipient.view_account().await?.balance;
     assert_eq!(
@@ -536,7 +591,7 @@ async fn test_combined_proposals() -> Result<()> {
         },
     ];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let updated_counter_value: u32 = counter_helper.get_value().await?;
     assert_eq!(
@@ -582,7 +637,7 @@ async fn test_combined_proposal_actions_with_promise_failure() -> Result<()> {
         },
     ];
 
-    create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members).await?;
+     create_and_approve_proposal(&proxy_helper, &relayer_account, &actions, members, 3).await?;
 
     let active_proposals_limit: u32 = proxy_helper
         .view_active_proposals_limit(&relayer_account)
