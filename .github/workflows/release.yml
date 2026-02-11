@@ -25,7 +25,6 @@ jobs:
     name: Prepare
     runs-on: ubuntu-latest
     outputs:
-      rust_protocol_matrix: ${{ steps.setup_matrix.outputs.rust_protocol_matrix }}
       version: ${{ steps.version_info.outputs.version }}
       release_required: ${{ steps.version_info.outputs.release_required }}
       build_required: ${{ steps.version_info.outputs.build_required }}
@@ -36,11 +35,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup matrix
-        id: setup_matrix
-        run: |
-          echo 'rust_protocol_matrix=["near"]' >> "$GITHUB_OUTPUT"
-
       - name: Get version info
         id: version_info
         shell: bash
@@ -50,23 +44,19 @@ jobs:
           echo "Validating contract versions"
 
           version_candidate=""
-          for protocol in $(echo '${{ steps.setup_matrix.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
-            for contract in "contracts/${protocol}"/*; do
-              if [ -d "${contract}" ]; then
-                contract_version=$(cargo pkgid --manifest-path "${contract}/Cargo.toml" | awk -F'[#@]' '{print $NF}')
-                echo "  contract: $contract, version: $contract_version"
+          for contract in contracts/near/*; do
+            if [ -d "${contract}" ]; then
+              contract_version=$(cargo pkgid --manifest-path "${contract}/Cargo.toml" | awk -F'[#@]' '{print $NF}')
+              echo "  contract: $contract, version: $contract_version"
 
-                if [ -z "$version_candidate" ]; then
-                  version_candidate="$contract_version"
-                elif [ "$version_candidate" != "$contract_version" ]; then
-                  echo "Version mismatch between contracts"
-                  echo "Make sure all contracts have the same version"
-                  echo "All contract protocols:"
-                  echo "  - rust_protocol_matrix: '${{ steps.setup_matrix.outputs.rust_protocol_matrix }}'"
-                  exit 1
-                fi
+              if [ -z "$version_candidate" ]; then
+                version_candidate="$contract_version"
+              elif [ "$version_candidate" != "$contract_version" ]; then
+                echo "Version mismatch between NEAR contracts"
+                echo "Make sure all NEAR contracts have the same version"
+                exit 1
               fi
-            done
+            fi
           done
           echo "Valid version candidate: $version_candidate"
 
@@ -144,22 +134,20 @@ jobs:
       - name: Build Rust contracts
         run: ./scripts/build-rust.sh
 
-      - name: Create protocol archives
+      - name: Create NEAR archive
         run: |
           mkdir -p artifacts
-          for protocol in $(echo '${{ needs.prepare.outputs.rust_protocol_matrix }}' | jq -r '.[]'); do
-            tmp_dir=$(mktemp -d)
-            for contract in "contracts/${protocol}"/*; do
-              if [ -d "${contract}" ]; then
-                find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-                if [ -d "${contract}/mock/res" ]; then
-                  find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-                fi
+          tmp_dir=$(mktemp -d)
+          for contract in contracts/near/*; do
+            if [ -d "${contract}" ]; then
+              find "${contract}/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
+              if [ -d "${contract}/mock/res" ]; then
+                find "${contract}/mock/res" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
               fi
-            done
-            tar -czf "artifacts/${protocol}.tar.gz" -C "$tmp_dir" .
-            rm -rf "$tmp_dir"
+            fi
           done
+          tar -czf "artifacts/near-contracts.tar.gz" -C "$tmp_dir" .
+          rm -rf "$tmp_dir"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

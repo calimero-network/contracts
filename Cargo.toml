@@ -15,7 +15,6 @@ members = [
 ]
 
 [workspace.dependencies]
-bs58 = "0.5.0"
 calimero-context-config = { git = "https://github.com/calimero-network/core", tag = "0.10.0-rc.1" }
 cfg-if = "1.0.0"
 ed25519-dalek = "2.1.1"
@@ -28,7 +27,6 @@ rand = "0.8.5"
 semver = "1.0.22"
 serde = "1.0.196"
 serde_json = "1.0.113"
-thiserror = "1.0.56"
 tokio = "1.35.1"
 
 calimero-context-config-near = { path = "./contracts/near/context-config" }
