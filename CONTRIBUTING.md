@@ -16,8 +16,6 @@ Start by reading the [README][] to understand the project better.
 ### Dependencies
 - [`rustc` and `cargo`](https://www.rust-lang.org/tools/install) - required for rust contracts
 - [wasm-opt](https://github.com/WebAssembly/binaryen/discussions/3797) - optional, for optimizing wasm binaries
-- [candid-extractor](https://github.com/dfinity/candid-extractor) - optional, used for DID generation for ICP contracts
-- [PocketIC](https://github.com/dfinity/pocketic) - required for ICP contracts testing
 
 ### Rust Contracts
 To build and test rust contracts locally, run the following commands:

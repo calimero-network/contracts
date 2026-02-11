@@ -26,7 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust_protocol_matrix: ${{ steps.setup_matrix.outputs.rust_protocol_matrix }}
-      solidity_protocol_matrix: ${{ steps.setup_matrix.outputs.solidity_protocol_matrix }}
       version: ${{ steps.version_info.outputs.version }}
       release_required: ${{ steps.version_info.outputs.release_required }}
       build_required: ${{ steps.version_info.outputs.build_required }}
@@ -40,8 +39,7 @@ jobs:
       - name: Setup matrix
         id: setup_matrix
         run: |
-          echo 'rust_protocol_matrix=["icp", "near", "stellar"]' >> "$GITHUB_OUTPUT"
-          echo 'solidity_protocol_matrix=["ethereum", "zksync"]' >> "$GITHUB_OUTPUT"
+          echo 'rust_protocol_matrix=["near"]' >> "$GITHUB_OUTPUT"
 
       - name: Get version info
         id: version_info
@@ -131,18 +129,6 @@ jobs:
         with:
           key: release
 
-      - name: Install candid-extractor
-        run: |
-          TMPDIR=$(mktemp -d)
-          VERSION="0.1.5"
-          BINARY="candid-extractor-x86_64-unknown-linux-gnu.tar.gz"
-          wget -P "$TMPDIR" "https://github.com/dfinity/candid-extractor/releases/download/${VERSION}/${BINARY}"
-          tar xzf "$TMPDIR/$BINARY" -C "$TMPDIR"
-          mkdir -p "$HOME/.local/bin"
-          mv "$TMPDIR/candid-extractor" "$HOME/.local/bin/"
-          rm -rf "$TMPDIR"
-          candid-extractor --version
-
       - name: Install wasm-opt
         run: |
           TMPDIR=$(mktemp -d)
@@ -182,95 +168,11 @@ jobs:
           path: artifacts/*
           retention-days: 2
 
-  build-ethereum:
-    name: Build Ethereum
-    if: needs.prepare.outputs.build_required == 'true'
-    runs-on: ubuntu-latest
-    needs: prepare
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
-      - run: forge --version
-
-      - name: Build Ethereum contracts
-        run: ./scripts/build-ethereum.sh
-
-      - name: Create archive
-        run: |
-          tmp_dir=$(mktemp -d)
-          for contract in "contracts/ethereum"/*; do
-            if [ -d "${contract}" ]; then
-              cp -r "${contract}/out" "$tmp_dir/"
-              if [ -d "${contract}/mock/out" ]; then
-                cp -r "${contract}/mock/out" "$tmp_dir/mock/"
-              fi
-            fi
-          done
-          mkdir -p artifacts
-          tar -czf "artifacts/ethereum.tar.gz" -C "$tmp_dir" .
-          rm -rf "$tmp_dir"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-ethereum
-          path: artifacts/*
-          retention-days: 2
-
-  build-zksync:
-    name: Build ZKsync
-    if: needs.prepare.outputs.build_required == 'true'
-    runs-on: ubuntu-latest
-    needs: prepare
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install ZKsync Foundry
-        run: |
-          wget -qc https://github.com/matter-labs/foundry-zksync/releases/download/nightly/foundry_nightly_linux_amd64.tar.gz -O - | tar -xz
-          sudo mv ./forge /usr/local/bin/
-          forge -V
-
-      - name: Build ZKsync contracts
-        run: ./scripts/build-zksync.sh
-
-      - name: Create archive
-        run: |
-          tmp_dir=$(mktemp -d)
-          for contract in "contracts/zksync"/*; do
-            if [ -d "${contract}" ]; then
-              # Copy the build artifacts from the contract directory
-              if [ -d "${contract}/out" ]; then
-                find "${contract}/out" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-              fi
-              # Copy mock artifacts if they exist
-              if [ -d "${contract}/mock/out" ]; then
-                find "${contract}/mock/out" -maxdepth 1 -type f -exec cp {} "$tmp_dir" \;
-              fi
-            fi
-          done
-          mkdir -p artifacts
-          tar -czf "artifacts/zksync.tar.gz" -C "$tmp_dir" .
-          rm -rf "$tmp_dir"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-zksync
-          path: artifacts/*
-          retention-days: 2
-
   release:
     name: Release
     if: needs.prepare.outputs.release_required == 'true'
     runs-on: ubuntu-latest
-    needs: [prepare, build-rust, build-ethereum, build-zksync]
+    needs: [prepare, build-rust]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

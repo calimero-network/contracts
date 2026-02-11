@@ -12,23 +12,15 @@ members = [
     "./contracts/near/context-config",
     "./contracts/near/context-proxy",
     "./contracts/near/context-proxy/mock",
-
-    "./contracts/icp/context-config",
-    "./contracts/icp/context-proxy",
-    "./contracts/icp/context-proxy/mock",
 ]
 
 [workspace.dependencies]
 bs58 = "0.5.0"
 calimero-context-config = { git = "https://github.com/calimero-network/core", tag = "0.10.0-rc.1" }
-candid = "0.10.10"
 cfg-if = "1.0.0"
 ed25519-dalek = "2.1.1"
 eyre = "0.6.12"
 hex = "0.4.3"
-ic-cdk = "0.16"
-ic-cdk-macros = "0.16"
-ic-ledger-types = "0.14.0"
 near-crypto = "0.27.0"
 near-sdk = "5.5.0"
 near-workspaces = "0.15.0"
