@@ -98,8 +98,8 @@ jobs:
             echo "version=dev-${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-  build-rust:
-    name: Build Rust
+  build-near:
+    name: Build NEAR Contracts
     if: needs.prepare.outputs.build_required == 'true'
     runs-on: ubuntu-latest
     needs: prepare
@@ -131,7 +131,7 @@ jobs:
           rm -rf "$TMPDIR"
           wasm-opt --version
 
-      - name: Build Rust contracts
+      - name: Build NEAR contracts
         run: ./scripts/build-rust.sh
 
       - name: Create NEAR archive
@@ -149,10 +149,10 @@ jobs:
           tar -czf "artifacts/near-contracts.tar.gz" -C "$tmp_dir" .
           rm -rf "$tmp_dir"
 
-      - name: Upload artifacts
+      - name: Upload NEAR artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-rust
+          name: artifacts-near
           path: artifacts/*
           retention-days: 2
 
@@ -160,7 +160,7 @@ jobs:
     name: Release
     if: needs.prepare.outputs.release_required == 'true'
     runs-on: ubuntu-latest
-    needs: [prepare, build-rust]
+    needs: [prepare, build-near]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

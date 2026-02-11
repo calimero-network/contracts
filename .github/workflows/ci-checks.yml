@@ -9,8 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust:
-    name: Rust
+  near:
+    name: Rust (NEAR)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -42,7 +42,7 @@ jobs:
           rustup component add rustfmt
           cargo fmt --check
 
-      - name: Build Rust
+      - name: Build NEAR contracts
         run: ./scripts/build-rust.sh
 
       - name: Cargo clippy
