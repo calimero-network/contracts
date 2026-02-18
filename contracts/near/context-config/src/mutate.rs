@@ -27,6 +27,9 @@ impl ContextConfigs {
             RequestKind::Context(ContextRequest {
                 context_id, kind, ..
             }) => (context_id, kind),
+            RequestKind::Group(_) => {
+                env::panic_str("group mutations not yet implemented");
+            }
         };
 
         self.check_and_increment_nonce(
@@ -164,6 +167,7 @@ impl ContextConfigs {
                 used_open_invitations,
             ),
             commitments_open_invitations: open_invitation_commitments,
+            group_id: None,
         };
 
         let _ignored = context.member_nonces.insert(*author_id, 0);

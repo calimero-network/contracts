@@ -36,4 +36,5 @@ migrations = []
 ## migrations (mutually exclusive) ##
 01_guard_revisions = []
 02_nonces = []
+03_context_groups = []
 ## migrations (mutually exclusive) ##
