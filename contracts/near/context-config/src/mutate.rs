@@ -2,16 +2,18 @@ use core::mem;
 
 use calimero_context_config::repr::{Repr, ReprBytes, ReprTransmute};
 use calimero_context_config::types::{
-    Application, Capability, ContextId, ContextIdentity, Signed, SignerId,
+    AppKey, Application, Capability, ContextGroupId, ContextId, ContextIdentity, Signed, SignerId,
 };
-use calimero_context_config::{ContextRequest, ContextRequestKind, Request, RequestKind};
+use calimero_context_config::{
+    ContextRequest, ContextRequestKind, GroupRequest, GroupRequestKind, Request, RequestKind,
+};
 use near_sdk::serde_json::{self, json};
 use near_sdk::store::{IterableMap, IterableSet};
 use near_sdk::{env, near, require, AccountId, Gas, NearToken, Promise, PromiseError};
 
 use super::{
-    parse_input, Context, ContextConfigs, ContextConfigsExt, ContextPrivilegeScope, Guard, Prefix,
-    PrivilegeScope,
+    parse_input, Context, ContextConfigs, ContextConfigsExt, ContextPrivilegeScope, Guard,
+    OnChainGroupMeta, Prefix, PrivilegeScope,
 };
 
 #[near]
@@ -27,8 +29,9 @@ impl ContextConfigs {
             RequestKind::Context(ContextRequest {
                 context_id, kind, ..
             }) => (context_id, kind),
-            RequestKind::Group(_) => {
-                env::panic_str("group mutations not yet implemented");
+            RequestKind::Group(group_request) => {
+                self.handle_group_request(&request.signer_id, group_request);
+                return;
             }
         };
 
@@ -452,6 +455,135 @@ impl ContextConfigs {
                 Gas::from_tgas(100),
             )
             .then(Self::ext(env::current_account_id()).proxy_contract_callback())
+    }
+}
+
+impl ContextConfigs {
+    fn handle_group_request(&mut self, signer_id: &SignerId, request: GroupRequest<'_>) {
+        let group_id = request.group_id;
+
+        match request.kind {
+            GroupRequestKind::Create {
+                app_key,
+                target_application,
+            } => {
+                self.create_group(signer_id, group_id, *app_key, target_application);
+            }
+            GroupRequestKind::Delete => {
+                self.delete_group(signer_id, group_id);
+            }
+            GroupRequestKind::AddMembers { members } => {
+                self.add_group_members(signer_id, group_id, members.into_owned());
+            }
+            GroupRequestKind::RemoveMembers { members } => {
+                self.remove_group_members(signer_id, group_id, members.into_owned());
+            }
+            GroupRequestKind::RegisterContext { .. }
+            | GroupRequestKind::UnregisterContext { .. }
+            | GroupRequestKind::SetTargetApplication { .. } => {
+                env::panic_str("not yet implemented");
+            }
+        }
+    }
+
+    fn create_group(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        app_key: AppKey,
+        target_application: Application<'_>,
+    ) {
+        require!(
+            !self.groups.contains_key(&group_id),
+            "group already exists"
+        );
+
+        let mut admins = IterableSet::new(Prefix::GroupAdmins(*group_id));
+        let _ignored = admins.insert(*signer_id);
+
+        let meta = OnChainGroupMeta {
+            app_key,
+            target_application: Application::new(
+                target_application.id,
+                target_application.blob,
+                target_application.size,
+                target_application.source.to_owned(),
+                target_application.metadata.to_owned(),
+            ),
+            admins,
+            member_count: 1,
+            context_count: 0,
+        };
+
+        let _ignored = self.groups.insert(*group_id, meta);
+
+        env::log_str(&format!("Group `{}` created", group_id));
+    }
+
+    fn delete_group(&mut self, signer_id: &SignerId, group_id: Repr<ContextGroupId>) {
+        {
+            let group = self.groups.get(&group_id).expect("group does not exist");
+
+            require!(
+                group.admins.contains(signer_id),
+                "only group admins can delete a group"
+            );
+
+            require!(
+                group.context_count == 0,
+                "cannot delete group with registered contexts"
+            );
+        }
+
+        let mut removed = self.groups.remove(&group_id).expect("group does not exist");
+        removed.admins.clear();
+
+        env::log_str(&format!("Group `{}` deleted", group_id));
+    }
+
+    fn add_group_members(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        members: Vec<Repr<SignerId>>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can add members"
+        );
+
+        for member in &members {
+            group.member_count += 1;
+            env::log_str(&format!("Added `{}` to group `{}`", member, group_id));
+        }
+    }
+
+    fn remove_group_members(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        members: Vec<Repr<SignerId>>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can remove members"
+        );
+
+        for member in &members {
+            require!(group.member_count > 0, "member count underflow");
+            group.member_count -= 1;
+            env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
+        }
     }
 }
 
