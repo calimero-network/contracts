@@ -721,4 +721,82 @@ impl ContextConfigs {
 
         env::log_str("Successfully deployed proxy contract");
     }
+
+    pub fn proxy_register_in_group(
+        &mut self,
+        context_id: Repr<ContextId>,
+        group_id: Repr<ContextGroupId>,
+    ) {
+        {
+            let context = self
+                .contexts
+                .get(&context_id)
+                .expect("context does not exist");
+            let proxy_account: &AccountId = &context.proxy;
+            require!(
+                env::predecessor_account_id() == *proxy_account,
+                "only the context proxy can call this method"
+            );
+        }
+
+        require!(
+            self.groups.contains_key(&group_id),
+            "group does not exist"
+        );
+
+        let context = self
+            .contexts
+            .get_mut(&context_id)
+            .expect("context does not exist");
+        require!(
+            context.group_id.is_none(),
+            "context already belongs to a group"
+        );
+        context.group_id = Some(*group_id);
+
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+        group.context_count += 1;
+
+        let _ignored = self.context_group_refs.insert(*context_id, *group_id);
+
+        env::log_str(&format!(
+            "Context `{}` registered in group `{}` (via proxy)",
+            context_id, group_id
+        ));
+    }
+
+    pub fn proxy_unregister_from_group(&mut self, context_id: Repr<ContextId>) {
+        let group_id = {
+            let context = self
+                .contexts
+                .get(&context_id)
+                .expect("context does not exist");
+            let proxy_account: &AccountId = &context.proxy;
+            require!(
+                env::predecessor_account_id() == *proxy_account,
+                "only the context proxy can call this method"
+            );
+            context.group_id.expect("context does not belong to a group")
+        };
+
+        let context = self
+            .contexts
+            .get_mut(&context_id)
+            .expect("context does not exist");
+        context.group_id = None;
+
+        let group = self.groups.get_mut(&group_id).expect("group does not exist");
+        require!(group.context_count > 0, "context count underflow");
+        group.context_count -= 1;
+
+        let _ignored = self.context_group_refs.remove(&context_id);
+
+        env::log_str(&format!(
+            "Context `{}` unregistered from group (via proxy)",
+            context_id
+        ));
+    }
 }

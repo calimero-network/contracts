@@ -114,9 +114,10 @@ impl ProxyContract {
 
         for action in proposal.actions {
             match action {
-                ProposalAction::ExternalFunctionCall { .. } | ProposalAction::Transfer { .. } => {
-                    promise_actions.push(action)
-                }
+                ProposalAction::ExternalFunctionCall { .. }
+                | ProposalAction::Transfer { .. }
+                | ProposalAction::RegisterInGroup { .. }
+                | ProposalAction::UnregisterFromGroup => promise_actions.push(action),
                 _ => non_promise_actions.push(action),
             }
         }
@@ -172,6 +173,16 @@ impl ProxyContract {
                     let account_id: AccountId =
                         AccountId::from_str(receiver_id.as_str()).expect("Invalid account ID");
                     Promise::new(account_id).transfer(NearToken::from_yoctonear(amount))
+                }
+                ProposalAction::RegisterInGroup { group_id } => {
+                    config_contract::ext(self.context_config_account_id.clone())
+                        .with_static_gas(gas_per_call)
+                        .proxy_register_in_group(Repr::new(self.context_id), group_id)
+                }
+                ProposalAction::UnregisterFromGroup => {
+                    config_contract::ext(self.context_config_account_id.clone())
+                        .with_static_gas(gas_per_call)
+                        .proxy_unregister_from_group(Repr::new(self.context_id))
                 }
                 _ => continue,
             };
