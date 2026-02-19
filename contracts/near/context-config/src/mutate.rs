@@ -30,6 +30,12 @@ impl ContextConfigs {
                 context_id, kind, ..
             }) => (context_id, kind),
             RequestKind::Group(group_request) => {
+                let group_id = *group_request.group_id;
+                self.check_and_increment_group_nonce(
+                    group_id,
+                    &request.signer_id,
+                    request.nonce,
+                );
                 self.handle_group_request(&request.signer_id, group_request);
                 return;
             }
@@ -92,6 +98,29 @@ impl ContextConfigs {
         };
 
         let Some(current_nonce) = context.member_nonces.get_mut(&member_id) else {
+            return;
+        };
+
+        require!(*current_nonce == nonce, "invalid nonce");
+
+        *current_nonce += 1;
+    }
+
+    fn check_and_increment_group_nonce(
+        &mut self,
+        group_id: ContextGroupId,
+        signer_id: &SignerId,
+        nonce: u64,
+    ) {
+        let Some(group) = self.groups.get_mut(&group_id) else {
+            // Group doesn't exist yet — only Create is valid here, which
+            // has its own duplicate-ID guard; skip nonce check.
+            return;
+        };
+
+        let Some(current_nonce) = group.admin_nonces.get_mut(signer_id) else {
+            // Signer has no nonce entry — not a registered admin.
+            // The operation itself will reject via the admins-set check.
             return;
         };
 
@@ -502,6 +531,11 @@ impl ContextConfigs {
         let mut admins = IterableSet::new(Prefix::GroupAdmins(*group_id));
         let _ignored = admins.insert(*signer_id);
 
+        let mut admin_nonces = IterableMap::new(Prefix::GroupAdminNonces(*group_id));
+        let _ignored = admin_nonces.insert(*signer_id, 0);
+
+        let members = IterableSet::new(Prefix::GroupMembers(*group_id));
+
         let meta = OnChainGroupMeta {
             app_key,
             target_application: Application::new(
@@ -512,7 +546,8 @@ impl ContextConfigs {
                 target_application.metadata.to_owned(),
             ),
             admins,
-            member_count: 1,
+            admin_nonces,
+            members,
             context_count: 0,
         };
 
@@ -538,6 +573,8 @@ impl ContextConfigs {
 
         let mut removed = self.groups.remove(&group_id).expect("group does not exist");
         removed.admins.clear();
+        removed.admin_nonces.clear();
+        removed.members.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -559,8 +596,9 @@ impl ContextConfigs {
         );
 
         for member in &members {
-            group.member_count += 1;
-            env::log_str(&format!("Added `{}` to group `{}`", member, group_id));
+            if group.members.insert(**member) {
+                env::log_str(&format!("Added `{}` to group `{}`", member, group_id));
+            }
         }
     }
 
@@ -581,8 +619,10 @@ impl ContextConfigs {
         );
 
         for member in &members {
-            require!(group.member_count > 0, "member count underflow");
-            group.member_count -= 1;
+            require!(
+                group.members.remove(&**member),
+                "member not in group"
+            );
             env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
         }
     }

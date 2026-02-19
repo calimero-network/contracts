@@ -61,7 +61,8 @@ pub struct OnChainGroupMeta {
     pub app_key: AppKey,
     pub target_application: Application<'static>,
     pub admins: IterableSet<SignerId>,
-    pub member_count: u64,
+    pub admin_nonces: IterableMap<SignerId, u64>,
+    pub members: IterableSet<SignerId>,
     pub context_count: u64,
 }
 
@@ -80,6 +81,8 @@ enum Prefix {
     Groups = 9,
     GroupAdmins(ContextGroupId) = 10,
     ContextGroupRefs = 11,
+    GroupAdminNonces(ContextGroupId) = 12,
+    GroupMembers(ContextGroupId) = 13,
 }
 
 #[derive(Copy, Clone, Debug)]

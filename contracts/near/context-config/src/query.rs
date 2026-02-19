@@ -156,7 +156,7 @@ impl ContextConfigs {
                 group.target_application.source.clone(),
                 group.target_application.metadata.clone(),
             ),
-            member_count: group.member_count,
+            member_count: group.admins.len() as u64 + group.members.len() as u64,
             context_count: group.context_count,
         })
     }

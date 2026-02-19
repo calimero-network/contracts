@@ -37,13 +37,14 @@ fn make_group_request<'a>(
     signer_sk: &'a SigningKey,
     group_id: Repr<ContextGroupId>,
     kind: GroupRequestKind<'a>,
+    nonce: u64,
 ) -> eyre::Result<Signed<Request<'a>>> {
     let signer_id: SignerId = signer_sk.verifying_key().to_bytes().rt()?;
 
     Ok(Signed::new(
         &{
             let kind = RequestKind::Group(GroupRequest::new(group_id, kind));
-            Request::new(signer_id, kind, 0)
+            Request::new(signer_id, kind, nonce)
         },
         |p| signer_sk.sign(p),
     )?)
@@ -152,6 +153,7 @@ async fn test_create_and_query_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -235,7 +237,7 @@ async fn test_create_duplicate_group_fails() -> eyre::Result<()> {
 
     let _res = node1
         .call(contract.id(), "mutate")
-        .args_json(make_group_request(&admin_sk, group_id, create_kind)?)
+        .args_json(make_group_request(&admin_sk, group_id, create_kind, 0)?)
         .max_gas()
         .transact()
         .await?
@@ -254,7 +256,7 @@ async fn test_create_duplicate_group_fails() -> eyre::Result<()> {
 
     let err = node1
         .call(contract.id(), "mutate")
-        .args_json(make_group_request(&admin_sk, group_id, create_kind2)?)
+        .args_json(make_group_request(&admin_sk, group_id, create_kind2, 0)?)
         .max_gas()
         .transact()
         .await?
@@ -305,6 +307,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -322,6 +325,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member1, member2].into(),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -353,6 +357,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
             GroupRequestKind::RemoveMembers {
                 members: vec![member1].into(),
             },
+        1,
         )?)
         .max_gas()
         .transact()
@@ -374,6 +379,179 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
     assert_eq!(
         group_info["member_count"], 2,
         "member_count should be 2 after removing 1"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_add_member_idempotent() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let member1: Repr<SignerId> = rng.gen::<[_; 32]>().rt()?;
+
+    // Add member1 the first time.
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::AddMembers {
+                members: vec![member1].into(),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["member_count"], 2,
+        "member_count should be 2 after first add"
+    );
+
+    // Adding member1 again must be a no-op — count must not change.
+    let res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::AddMembers {
+                members: vec![member1].into(),
+            },
+        1,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    assert_eq!(
+        res.logs().len(),
+        0,
+        "duplicate add should produce no log entries"
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["member_count"], 2,
+        "member_count must remain 2 after duplicate add"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_remove_nonexistent_member_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let never_added: Repr<SignerId> = rng.gen::<[_; 32]>().rt()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RemoveMembers {
+                members: vec![never_added].into(),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("removing a non-member should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("member not in group"),
+        "Expected 'member not in group', got: {}",
+        err_str
     );
 
     Ok(())
@@ -414,6 +592,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -430,6 +609,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member].into(),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -452,6 +632,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             GroupRequestKind::RemoveMembers {
                 members: vec![member].into(),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -472,6 +653,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             &non_admin_sk,
             group_id,
             GroupRequestKind::Delete,
+        0,
         )?)
         .max_gas()
         .transact()
@@ -523,6 +705,7 @@ async fn test_delete_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -543,6 +726,7 @@ async fn test_delete_group() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::Delete,
+        0,
         )?)
         .max_gas()
         .transact()
@@ -639,6 +823,7 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -655,6 +840,7 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -734,6 +920,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -750,6 +937,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -764,6 +952,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        1,
         )?)
         .max_gas()
         .transact()
@@ -815,6 +1004,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -831,6 +1021,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -845,6 +1036,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
+        1,
         )?)
         .max_gas()
         .transact()
@@ -930,6 +1122,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -946,6 +1139,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -968,6 +1162,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1019,6 +1214,7 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1026,6 +1222,7 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
         .into_result()?;
 
     let mut context_ids = Vec::new();
+    let mut group_nonce = 0u64;
     for _ in 0..3 {
         let ctx = create_test_context(&node1, &contract, &mut rng).await?;
 
@@ -1037,12 +1234,14 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
                 GroupRequestKind::RegisterContext {
                     context_id: ctx.context_id,
                 },
+            group_nonce,
             )?)
             .max_gas()
             .transact()
             .await?
             .into_result()?;
 
+        group_nonce += 1;
         context_ids.push(ctx.context_id);
     }
 
@@ -1116,6 +1315,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1132,6 +1332,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1144,6 +1345,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::Delete,
+        1,
         )?)
         .max_gas()
         .transact()
@@ -1197,6 +1399,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
                         Default::default(),
                     ),
                 },
+            0,
             )?)
             .max_gas()
             .transact()
@@ -1214,6 +1417,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1228,6 +1432,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1310,6 +1515,7 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1344,6 +1550,7 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1411,6 +1618,7 @@ async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1434,6 +1642,7 @@ async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
@@ -1494,6 +1703,7 @@ async fn test_set_group_target_nonexistent_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
+        0,
         )?)
         .max_gas()
         .transact()
