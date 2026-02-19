@@ -1720,3 +1720,147 @@ async fn test_set_group_target_nonexistent_group() -> eyre::Result<()> {
 
     Ok(())
 }
+
+// --- Phase 5 proxy authorization tests ---
+
+#[tokio::test]
+async fn test_approve_context_registration() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::ApproveContextRegistration {
+                context_id: ctx.context_id,
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let expected_log = format!(
+        "Context `{}` approved for registration in group `{}`",
+        ctx.context_id, group_id
+    );
+    assert!(
+        res.logs().iter().any(|log| log == &expected_log),
+        "Expected approval log: {}, got: {:?}",
+        expected_log,
+        res.logs()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_non_admin_approve_context_registration_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let non_admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &non_admin_sk,
+            group_id,
+            GroupRequestKind::ApproveContextRegistration {
+                context_id: ctx.context_id,
+            },
+        0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-admin approve should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only group admins can approve context registrations"),
+        "Expected 'only group admins can approve context registrations', got: {}",
+        err_str
+    );
+
+    Ok(())
+}

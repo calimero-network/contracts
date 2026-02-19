@@ -516,6 +516,9 @@ impl ContextConfigs {
             GroupRequestKind::SetTargetApplication { target_application } => {
                 self.set_group_target(signer_id, group_id, target_application);
             }
+            GroupRequestKind::ApproveContextRegistration { context_id } => {
+                self.approve_context_registration(signer_id, group_id, context_id);
+            }
         }
     }
 
@@ -535,6 +538,8 @@ impl ContextConfigs {
         let _ignored = admin_nonces.insert(*signer_id, 0);
 
         let members = IterableSet::new(Prefix::GroupMembers(*group_id));
+        let approved_registrations =
+            IterableSet::new(Prefix::GroupApprovedRegistrations(*group_id));
 
         let meta = OnChainGroupMeta {
             app_key,
@@ -548,6 +553,7 @@ impl ContextConfigs {
             admins,
             admin_nonces,
             members,
+            approved_registrations,
             context_count: 0,
         };
 
@@ -575,6 +581,7 @@ impl ContextConfigs {
         removed.admins.clear();
         removed.admin_nonces.clear();
         removed.members.clear();
+        removed.approved_registrations.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -743,6 +750,35 @@ impl ContextConfigs {
             group_id, old_application_id, target_application.id
         ));
     }
+
+    fn approve_context_registration(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can approve context registrations"
+        );
+
+        require!(
+            self.contexts.contains_key(&context_id),
+            "context does not exist"
+        );
+
+        let _already_approved = group.approved_registrations.insert(*context_id);
+
+        env::log_str(&format!(
+            "Context `{}` approved for registration in group `{}`",
+            context_id, group_id
+        ));
+    }
 }
 
 #[near]
@@ -774,7 +810,17 @@ impl ContextConfigs {
             );
         }
 
-        require!(self.groups.contains_key(&group_id), "group does not exist");
+        {
+            let group = self
+                .groups
+                .get_mut(&group_id)
+                .expect("group does not exist");
+
+            require!(
+                group.approved_registrations.remove(&context_id),
+                "group admin has not approved this context for registration"
+            );
+        }
 
         let context = self
             .contexts
