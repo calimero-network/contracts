@@ -64,6 +64,10 @@ pub struct OnChainGroupMeta {
     pub admin_nonces: IterableMap<SignerId, u64>,
     pub members: IterableSet<SignerId>,
     pub approved_registrations: IterableSet<ContextId>,
+    /// Forward index: contexts that belong to this group.
+    /// Enables O(k) pagination in `group_contexts` where k is this group's
+    /// context count, instead of scanning the global `context_group_refs` map.
+    pub context_ids: IterableSet<ContextId>,
     pub context_count: u64,
 }
 
@@ -85,6 +89,7 @@ enum Prefix {
     GroupAdminNonces(ContextGroupId) = 12,
     GroupMembers(ContextGroupId) = 13,
     GroupApprovedRegistrations(ContextGroupId) = 14,
+    GroupContextIds(ContextGroupId) = 15,
 }
 
 #[derive(Copy, Clone, Debug)]

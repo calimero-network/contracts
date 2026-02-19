@@ -540,6 +540,7 @@ impl ContextConfigs {
         let members = IterableSet::new(Prefix::GroupMembers(*group_id));
         let approved_registrations =
             IterableSet::new(Prefix::GroupApprovedRegistrations(*group_id));
+        let context_ids = IterableSet::new(Prefix::GroupContextIds(*group_id));
 
         let meta = OnChainGroupMeta {
             app_key,
@@ -554,6 +555,7 @@ impl ContextConfigs {
             admin_nonces,
             members,
             approved_registrations,
+            context_ids,
             context_count: 0,
         };
 
@@ -582,6 +584,7 @@ impl ContextConfigs {
         removed.admin_nonces.clear();
         removed.members.clear();
         removed.approved_registrations.clear();
+        removed.context_ids.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -666,6 +669,7 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+        let _ignored = group.context_ids.insert(*context_id);
         group.context_count += 1;
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);
@@ -708,6 +712,7 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+        let _ignored = group.context_ids.remove(&context_id);
         require!(group.context_count > 0, "context count underflow");
         group.context_count -= 1;
 
@@ -836,6 +841,7 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+        let _ignored = group.context_ids.insert(*context_id);
         group.context_count += 1;
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);
@@ -872,6 +878,7 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+        let _ignored = group.context_ids.remove(&context_id);
         require!(group.context_count > 0, "context count underflow");
         group.context_count -= 1;
 

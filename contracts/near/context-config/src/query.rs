@@ -173,12 +173,15 @@ impl ContextConfigs {
         offset: usize,
         length: usize,
     ) -> Vec<Repr<ContextId>> {
-        self.context_group_refs
+        let Some(group) = self.groups.get(&group_id) else {
+            return vec![];
+        };
+        group
+            .context_ids
             .iter()
-            .filter(|(_, gid)| **gid == *group_id)
             .skip(offset)
             .take(length)
-            .map(|(cid, _)| Repr::new(*cid))
+            .map(|cid| Repr::new(*cid))
             .collect()
     }
 
