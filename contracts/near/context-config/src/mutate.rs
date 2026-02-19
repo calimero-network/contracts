@@ -484,8 +484,10 @@ impl ContextConfigs {
             GroupRequestKind::UnregisterContext { context_id } => {
                 self.unregister_context_from_group(signer_id, group_id, context_id);
             }
-            GroupRequestKind::SetTargetApplication { .. } => {
-                env::panic_str("not yet implemented");
+            GroupRequestKind::SetTargetApplication {
+                target_application,
+            } => {
+                self.set_group_target(signer_id, group_id, target_application);
             }
         }
     }
@@ -672,6 +674,38 @@ impl ContextConfigs {
         env::log_str(&format!(
             "Context `{}` unregistered from group `{}`",
             context_id, group_id
+        ));
+    }
+
+    fn set_group_target(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        target_application: Application<'_>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can set the target application"
+        );
+
+        let old_application_id = group.target_application.id;
+
+        group.target_application = Application::new(
+            target_application.id,
+            target_application.blob,
+            target_application.size,
+            target_application.source.to_owned(),
+            target_application.metadata.to_owned(),
+        );
+
+        env::log_str(&format!(
+            "Updated target application for group `{}` from `{}` to `{}`",
+            group_id, old_application_id, target_application.id
         ));
     }
 }

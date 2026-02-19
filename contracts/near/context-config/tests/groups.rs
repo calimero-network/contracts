@@ -1249,3 +1249,238 @@ async fn test_context_group_returns_none_for_ungrouped() -> eyre::Result<()> {
 
     Ok(())
 }
+
+// --- Phase 4: Target Application Management Tests ---
+
+#[tokio::test]
+async fn test_set_group_target_application() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let original_app_id = rng.gen::<[_; 32]>().rt()?;
+    let original_blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    original_app_id,
+                    original_blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["target_application"]["id"],
+        serde_json::to_value(original_app_id)?,
+        "initial target app should match"
+    );
+
+    let new_app_id = rng.gen::<[_; 32]>().rt()?;
+    let new_blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetTargetApplication {
+                target_application: Application::new(
+                    new_app_id,
+                    new_blob_id,
+                    1024,
+                    "https://example.com/app.wasm".into(),
+                    "v2 upgrade".into(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    assert!(
+        res.logs().iter().any(|log| log.contains("Updated target application for group")),
+        "Expected update log, got: {:?}",
+        res.logs()
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["target_application"]["id"],
+        serde_json::to_value(new_app_id)?,
+        "target app should be updated"
+    );
+    assert_eq!(
+        group_info["target_application"]["size"], 1024,
+        "target app size should be updated"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let non_admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let new_app_id = rng.gen::<[_; 32]>().rt()?;
+    let new_blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &non_admin_sk,
+            group_id,
+            GroupRequestKind::SetTargetApplication {
+                target_application: Application::new(
+                    new_app_id,
+                    new_blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-admin set target should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only group admins can set the target application"),
+        "Expected 'only group admins can set the target application', got: {}",
+        err_str
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["target_application"]["id"],
+        serde_json::to_value(application_id)?,
+        "target app should remain unchanged after rejected update"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_group_target_nonexistent_group() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let new_app_id = rng.gen::<[_; 32]>().rt()?;
+    let new_blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetTargetApplication {
+                target_application: Application::new(
+                    new_app_id,
+                    new_blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("set target on nonexistent group should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("group does not exist"),
+        "Expected 'group does not exist', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
