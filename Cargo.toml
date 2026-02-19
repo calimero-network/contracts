@@ -32,7 +32,7 @@ tokio = "1.35.1"
 calimero-context-config-near = { path = "./contracts/near/context-config" }
 
 [patch."https://github.com/calimero-network/core"]
-calimero-context-config = { path = "../core/crates/context/config" }
+calimero-context-config = { git = "https://github.com/calimero-network/core", tag = "0.10.0-rc.1" }
 
 [profile.release]
 strip = "symbols"
