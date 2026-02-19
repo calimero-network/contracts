@@ -51,6 +51,10 @@ impl ContextConfigs {
 
         for (_, mut group) in self.groups.drain() {
             group.admins.clear();
+            group.admin_nonces.clear();
+            group.members.clear();
+            group.approved_registrations.clear();
+            group.context_ids.clear();
         }
         self.context_group_refs.clear();
 
