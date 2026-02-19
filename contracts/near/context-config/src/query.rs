@@ -171,4 +171,28 @@ impl ContextConfigs {
             .get(&group_id)
             .map_or(false, |group| group.admins.contains(&identity))
     }
+
+    pub fn group_contexts(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        offset: usize,
+        length: usize,
+    ) -> Vec<Repr<ContextId>> {
+        self.context_group_refs
+            .iter()
+            .filter(|(_, gid)| **gid == *group_id)
+            .skip(offset)
+            .take(length)
+            .map(|(cid, _)| Repr::new(*cid))
+            .collect()
+    }
+
+    pub fn context_group(
+        &self,
+        context_id: Repr<ContextId>,
+    ) -> Option<Repr<ContextGroupId>> {
+        self.context_group_refs
+            .get(&context_id)
+            .map(|gid| Repr::new(*gid))
+    }
 }

@@ -2,9 +2,11 @@
 
 use calimero_context_config::repr::{Repr, ReprTransmute};
 use calimero_context_config::types::{
-    AppKey, Application, ContextGroupId, Signed, SignerId,
+    AppKey, Application, ContextGroupId, ContextId, ContextIdentity, Signed, SignerId,
 };
-use calimero_context_config::{GroupRequest, GroupRequestKind, Request, RequestKind};
+use calimero_context_config::{
+    ContextRequest, ContextRequestKind, GroupRequest, GroupRequestKind, Request, RequestKind,
+};
 use ed25519_dalek::{Signer, SigningKey};
 use near_workspaces::types::NearToken;
 use near_workspaces::{network::Sandbox, Contract, Worker};
@@ -45,6 +47,74 @@ fn make_group_request(
         },
         |p| signer_sk.sign(p),
     )?)
+}
+
+fn make_context_request(
+    signer_sk: &SigningKey,
+    context_id: Repr<ContextId>,
+    kind: ContextRequestKind<'_>,
+    nonce: u64,
+) -> eyre::Result<Signed<Request<'_>>> {
+    let signer_id: SignerId = signer_sk.verifying_key().to_bytes().rt()?;
+
+    Ok(Signed::new(
+        &{
+            let kind = RequestKind::Context(ContextRequest::new(context_id, kind));
+            Request::new(signer_id, kind, nonce)
+        },
+        |p| signer_sk.sign(p),
+    )?)
+}
+
+struct TestContext {
+    context_id: Repr<ContextId>,
+    context_sk: SigningKey,
+    author_id: Repr<ContextIdentity>,
+    author_sk: SigningKey,
+}
+
+async fn create_test_context(
+    node: &near_workspaces::Account,
+    contract: &Contract,
+    rng: &mut impl Rng,
+) -> eyre::Result<TestContext> {
+    let context_sk = SigningKey::from_bytes(&rng.gen());
+    let context_id: Repr<ContextId> = context_sk.verifying_key().to_bytes().rt()?;
+
+    let author_sk = SigningKey::from_bytes(&rng.gen());
+    let author_id: Repr<ContextIdentity> = author_sk.verifying_key().to_bytes().rt()?;
+
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_context_request(
+            &context_sk,
+            context_id,
+            ContextRequestKind::Add {
+                author_id,
+                application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    Ok(TestContext {
+        context_id,
+        context_sk,
+        author_id,
+        author_sk,
+    })
 }
 
 #[tokio::test]
@@ -521,6 +591,660 @@ async fn test_query_nonexistent_group() -> eyre::Result<()> {
     assert!(
         !is_admin,
         "is_group_admin on nonexistent group should be false"
+    );
+
+    Ok(())
+}
+
+// --- Phase 3: Context-Group Integration Tests ---
+
+#[tokio::test]
+async fn test_register_context_in_group() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let expected_log = format!(
+        "Context `{}` registered in group `{}`",
+        ctx.context_id, group_id
+    );
+    assert!(
+        res.logs().iter().any(|log| log == &expected_log),
+        "Expected log: {}, got: {:?}",
+        expected_log,
+        res.logs()
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["context_count"], 1);
+
+    let ctx_group: Option<Repr<ContextGroupId>> = contract
+        .view("context_group")
+        .args_json(json!({ "context_id": ctx.context_id }))
+        .await?
+        .json()?;
+    assert_eq!(ctx_group, Some(group_id), "reverse lookup should return group_id");
+
+    let contexts: Vec<Repr<ContextId>> = contract
+        .view("group_contexts")
+        .args_json(json!({ "group_id": group_id, "offset": 0, "length": 10 }))
+        .await?
+        .json()?;
+    assert_eq!(contexts, vec![ctx.context_id]);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_double_register_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("double registration should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("context already belongs to a group"),
+        "Expected 'context already belongs to a group', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_unregister_context_from_group() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::UnregisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let expected_log = format!(
+        "Context `{}` unregistered from group `{}`",
+        ctx.context_id, group_id
+    );
+    assert!(
+        res.logs().iter().any(|log| log == &expected_log),
+        "Expected log: {}, got: {:?}",
+        expected_log,
+        res.logs()
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["context_count"], 0, "context_count should be 0 after unregistration");
+
+    let ctx_group: Option<Repr<ContextGroupId>> = contract
+        .view("context_group")
+        .args_json(json!({ "context_id": ctx.context_id }))
+        .await?
+        .json()?;
+    assert!(ctx_group.is_none(), "reverse lookup should return None after unregistration");
+
+    let contexts: Vec<Repr<ContextId>> = contract
+        .view("group_contexts")
+        .args_json(json!({ "group_id": group_id, "offset": 0, "length": 10 }))
+        .await?
+        .json()?;
+    assert!(contexts.is_empty(), "group_contexts should be empty after unregistration");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_non_admin_register_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let non_admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &non_admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-admin register should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only group admins can register contexts"),
+        "Expected 'only group admins can register contexts', got: {}",
+        err_str
+    );
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &non_admin_sk,
+            group_id,
+            GroupRequestKind::UnregisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-admin unregister should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only group admins can unregister contexts"),
+        "Expected 'only group admins can unregister contexts', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_group_contexts_pagination() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(50))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let mut context_ids = Vec::new();
+    for _ in 0..3 {
+        let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+        let _res = node1
+            .call(contract.id(), "mutate")
+            .args_json(make_group_request(
+                &admin_sk,
+                group_id,
+                GroupRequestKind::RegisterContext {
+                    context_id: ctx.context_id,
+                },
+            )?)
+            .max_gas()
+            .transact()
+            .await?
+            .into_result()?;
+
+        context_ids.push(ctx.context_id);
+    }
+
+    let all_contexts: Vec<Repr<ContextId>> = contract
+        .view("group_contexts")
+        .args_json(json!({ "group_id": group_id, "offset": 0, "length": 10 }))
+        .await?
+        .json()?;
+    assert_eq!(all_contexts.len(), 3, "should have 3 contexts in group");
+
+    let page1: Vec<Repr<ContextId>> = contract
+        .view("group_contexts")
+        .args_json(json!({ "group_id": group_id, "offset": 0, "length": 2 }))
+        .await?
+        .json()?;
+    assert_eq!(page1.len(), 2, "first page should have 2 contexts");
+
+    let page2: Vec<Repr<ContextId>> = contract
+        .view("group_contexts")
+        .args_json(json!({ "group_id": group_id, "offset": 2, "length": 2 }))
+        .await?
+        .json()?;
+    assert_eq!(page2.len(), 1, "second page should have 1 context");
+
+    assert!(
+        !page1.iter().any(|c| page2.contains(c)),
+        "pages should not overlap"
+    );
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["context_count"], 3);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(&admin_sk, group_id, GroupRequestKind::Delete)?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("deleting group with contexts should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("cannot delete group with registered contexts"),
+        "Expected 'cannot delete group with registered contexts', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id1: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let group_id2: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    for gid in [group_id1, group_id2] {
+        let _res = node1
+            .call(contract.id(), "mutate")
+            .args_json(make_group_request(
+                &admin_sk,
+                gid,
+                GroupRequestKind::Create {
+                    app_key,
+                    target_application: Application::new(
+                        application_id,
+                        blob_id,
+                        0,
+                        Default::default(),
+                        Default::default(),
+                    ),
+                },
+            )?)
+            .max_gas()
+            .transact()
+            .await?
+            .into_result()?;
+    }
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let _res = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id1,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let err = node1
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id2,
+            GroupRequestKind::UnregisterContext {
+                context_id: ctx.context_id,
+            },
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("unregistering from wrong group should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("context does not belong to this group"),
+        "Expected 'context does not belong to this group', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_context_group_returns_none_for_ungrouped() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let root_account = worker.root_account()?;
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let ctx = create_test_context(&node1, &contract, &mut rng).await?;
+
+    let ctx_group: Option<Repr<ContextGroupId>> = contract
+        .view("context_group")
+        .args_json(json!({ "context_id": ctx.context_id }))
+        .await?
+        .json()?;
+
+    assert!(
+        ctx_group.is_none(),
+        "ungrouped context should return None for context_group query"
     );
 
     Ok(())

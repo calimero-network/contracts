@@ -478,9 +478,13 @@ impl ContextConfigs {
             GroupRequestKind::RemoveMembers { members } => {
                 self.remove_group_members(signer_id, group_id, members.into_owned());
             }
-            GroupRequestKind::RegisterContext { .. }
-            | GroupRequestKind::UnregisterContext { .. }
-            | GroupRequestKind::SetTargetApplication { .. } => {
+            GroupRequestKind::RegisterContext { context_id } => {
+                self.register_context_in_group(signer_id, group_id, context_id);
+            }
+            GroupRequestKind::UnregisterContext { context_id } => {
+                self.unregister_context_from_group(signer_id, group_id, context_id);
+            }
+            GroupRequestKind::SetTargetApplication { .. } => {
                 env::panic_str("not yet implemented");
             }
         }
@@ -584,6 +588,91 @@ impl ContextConfigs {
             group.member_count -= 1;
             env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
         }
+    }
+
+    fn register_context_in_group(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can register contexts"
+        );
+
+        let context = self
+            .contexts
+            .get_mut(&context_id)
+            .expect("context does not exist");
+
+        require!(
+            context.group_id.is_none(),
+            "context already belongs to a group"
+        );
+
+        context.group_id = Some(*group_id);
+
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+        group.context_count += 1;
+
+        let _ignored = self.context_group_refs.insert(*context_id, *group_id);
+
+        env::log_str(&format!(
+            "Context `{}` registered in group `{}`",
+            context_id, group_id
+        ));
+    }
+
+    fn unregister_context_from_group(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can unregister contexts"
+        );
+
+        let context = self
+            .contexts
+            .get_mut(&context_id)
+            .expect("context does not exist");
+
+        require!(
+            context.group_id.as_ref() == Some(&*group_id),
+            "context does not belong to this group"
+        );
+
+        context.group_id = None;
+
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+        require!(group.context_count > 0, "context count underflow");
+        group.context_count -= 1;
+
+        let _ignored = self.context_group_refs.remove(&context_id);
+
+        env::log_str(&format!(
+            "Context `{}` unregistered from group `{}`",
+            context_id, group_id
+        ));
     }
 }
 
