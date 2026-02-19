@@ -10,5 +10,9 @@ pub trait ConfigContract {
         context_id: Repr<ContextId>,
         group_id: Repr<ContextGroupId>,
     );
-    fn proxy_unregister_from_group(&mut self, context_id: Repr<ContextId>);
+    fn proxy_unregister_from_group(
+        &mut self,
+        context_id: Repr<ContextId>,
+        group_id: Repr<ContextGroupId>,
+    );
 }

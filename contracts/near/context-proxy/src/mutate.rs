@@ -117,7 +117,7 @@ impl ProxyContract {
                 ProposalAction::ExternalFunctionCall { .. }
                 | ProposalAction::Transfer { .. }
                 | ProposalAction::RegisterInGroup { .. }
-                | ProposalAction::UnregisterFromGroup => promise_actions.push(action),
+                | ProposalAction::UnregisterFromGroup { .. } => promise_actions.push(action),
                 _ => non_promise_actions.push(action),
             }
         }
@@ -179,10 +179,10 @@ impl ProxyContract {
                         .with_static_gas(gas_per_call)
                         .proxy_register_in_group(Repr::new(self.context_id), group_id)
                 }
-                ProposalAction::UnregisterFromGroup => {
+                ProposalAction::UnregisterFromGroup { group_id } => {
                     config_contract::ext(self.context_config_account_id.clone())
                         .with_static_gas(gas_per_call)
-                        .proxy_unregister_from_group(Repr::new(self.context_id))
+                        .proxy_unregister_from_group(Repr::new(self.context_id), group_id)
                 }
                 _ => continue,
             };

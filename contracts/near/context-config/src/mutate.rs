@@ -852,8 +852,12 @@ impl ContextConfigs {
         ));
     }
 
-    pub fn proxy_unregister_from_group(&mut self, context_id: Repr<ContextId>) {
-        let group_id = {
+    pub fn proxy_unregister_from_group(
+        &mut self,
+        context_id: Repr<ContextId>,
+        group_id: Repr<ContextGroupId>,
+    ) {
+        {
             let context = self
                 .contexts
                 .get(&context_id)
@@ -863,10 +867,11 @@ impl ContextConfigs {
                 env::predecessor_account_id() == *proxy_account,
                 "only the context proxy can call this method"
             );
-            context
-                .group_id
-                .expect("context does not belong to a group")
-        };
+            require!(
+                context.group_id.as_ref() == Some(&*group_id),
+                "context does not belong to this group"
+            );
+        }
 
         let context = self
             .contexts
