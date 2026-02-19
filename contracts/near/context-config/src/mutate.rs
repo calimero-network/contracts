@@ -484,9 +484,7 @@ impl ContextConfigs {
             GroupRequestKind::UnregisterContext { context_id } => {
                 self.unregister_context_from_group(signer_id, group_id, context_id);
             }
-            GroupRequestKind::SetTargetApplication {
-                target_application,
-            } => {
+            GroupRequestKind::SetTargetApplication { target_application } => {
                 self.set_group_target(signer_id, group_id, target_application);
             }
         }
@@ -499,10 +497,7 @@ impl ContextConfigs {
         app_key: AppKey,
         target_application: Application<'_>,
     ) {
-        require!(
-            !self.groups.contains_key(&group_id),
-            "group already exists"
-        );
+        require!(!self.groups.contains_key(&group_id), "group already exists");
 
         let mut admins = IterableSet::new(Prefix::GroupAdmins(*group_id));
         let _ignored = admins.insert(*signer_id);
@@ -739,10 +734,7 @@ impl ContextConfigs {
             );
         }
 
-        require!(
-            self.groups.contains_key(&group_id),
-            "group does not exist"
-        );
+        require!(self.groups.contains_key(&group_id), "group does not exist");
 
         let context = self
             .contexts
@@ -779,7 +771,9 @@ impl ContextConfigs {
                 env::predecessor_account_id() == *proxy_account,
                 "only the context proxy can call this method"
             );
-            context.group_id.expect("context does not belong to a group")
+            context
+                .group_id
+                .expect("context does not belong to a group")
         };
 
         let context = self
@@ -788,7 +782,10 @@ impl ContextConfigs {
             .expect("context does not exist");
         context.group_id = None;
 
-        let group = self.groups.get_mut(&group_id).expect("group does not exist");
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
         require!(group.context_count > 0, "context count underflow");
         group.context_count -= 1;
 

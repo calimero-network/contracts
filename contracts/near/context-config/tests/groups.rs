@@ -539,7 +539,11 @@ async fn test_delete_group() -> eyre::Result<()> {
 
     let res = node1
         .call(contract.id(), "mutate")
-        .args_json(make_group_request(&admin_sk, group_id, GroupRequestKind::Delete)?)
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Delete,
+        )?)
         .max_gas()
         .transact()
         .await?
@@ -559,7 +563,10 @@ async fn test_delete_group() -> eyre::Result<()> {
         .await?
         .json()?;
 
-    assert!(group_info.is_none(), "group should not exist after deletion");
+    assert!(
+        group_info.is_none(),
+        "group should not exist after deletion"
+    );
 
     Ok(())
 }
@@ -677,7 +684,11 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
         .args_json(json!({ "context_id": ctx.context_id }))
         .await?
         .json()?;
-    assert_eq!(ctx_group, Some(group_id), "reverse lookup should return group_id");
+    assert_eq!(
+        ctx_group,
+        Some(group_id),
+        "reverse lookup should return group_id"
+    );
 
     let contexts: Vec<Repr<ContextId>> = contract
         .view("group_contexts")
@@ -856,21 +867,30 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
         .args_json(json!({ "group_id": group_id }))
         .await?
         .json()?;
-    assert_eq!(group_info["context_count"], 0, "context_count should be 0 after unregistration");
+    assert_eq!(
+        group_info["context_count"], 0,
+        "context_count should be 0 after unregistration"
+    );
 
     let ctx_group: Option<Repr<ContextGroupId>> = contract
         .view("context_group")
         .args_json(json!({ "context_id": ctx.context_id }))
         .await?
         .json()?;
-    assert!(ctx_group.is_none(), "reverse lookup should return None after unregistration");
+    assert!(
+        ctx_group.is_none(),
+        "reverse lookup should return None after unregistration"
+    );
 
     let contexts: Vec<Repr<ContextId>> = contract
         .view("group_contexts")
         .args_json(json!({ "group_id": group_id, "offset": 0, "length": 10 }))
         .await?
         .json()?;
-    assert!(contexts.is_empty(), "group_contexts should be empty after unregistration");
+    assert!(
+        contexts.is_empty(),
+        "group_contexts should be empty after unregistration"
+    );
 
     Ok(())
 }
@@ -1120,7 +1140,11 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
 
     let err = node1
         .call(contract.id(), "mutate")
-        .args_json(make_group_request(&admin_sk, group_id, GroupRequestKind::Delete)?)
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Delete,
+        )?)
         .max_gas()
         .transact()
         .await?
@@ -1327,7 +1351,9 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
         .into_result()?;
 
     assert!(
-        res.logs().iter().any(|log| log.contains("Updated target application for group")),
+        res.logs()
+            .iter()
+            .any(|log| log.contains("Updated target application for group")),
         "Expected update log, got: {:?}",
         res.logs()
     );

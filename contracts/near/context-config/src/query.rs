@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 
 use calimero_context_config::repr::{Repr, ReprTransmute};
 use calimero_context_config::types::{
-    AppKey, Application, Capability, ContextGroupId, ContextId, ContextIdentity, Revision,
-    SignerId,
+    AppKey, Application, Capability, ContextGroupId, ContextId, ContextIdentity, Revision, SignerId,
 };
 use near_sdk::serde::Serialize;
 use near_sdk::{near, AccountId};
@@ -162,11 +161,7 @@ impl ContextConfigs {
         })
     }
 
-    pub fn is_group_admin(
-        &self,
-        group_id: Repr<ContextGroupId>,
-        identity: Repr<SignerId>,
-    ) -> bool {
+    pub fn is_group_admin(&self, group_id: Repr<ContextGroupId>, identity: Repr<SignerId>) -> bool {
         self.groups
             .get(&group_id)
             .map_or(false, |group| group.admins.contains(&identity))
@@ -187,10 +182,7 @@ impl ContextConfigs {
             .collect()
     }
 
-    pub fn context_group(
-        &self,
-        context_id: Repr<ContextId>,
-    ) -> Option<Repr<ContextGroupId>> {
+    pub fn context_group(&self, context_id: Repr<ContextId>) -> Option<Repr<ContextGroupId>> {
         self.context_group_refs
             .get(&context_id)
             .map(|gid| Repr::new(*gid))
