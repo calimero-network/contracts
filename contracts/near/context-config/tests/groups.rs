@@ -33,11 +33,11 @@ async fn setup() -> eyre::Result<(Worker<Sandbox>, Contract)> {
     Ok((worker, contract))
 }
 
-fn make_group_request(
-    signer_sk: &SigningKey,
+fn make_group_request<'a>(
+    signer_sk: &'a SigningKey,
     group_id: Repr<ContextGroupId>,
-    kind: GroupRequestKind<'_>,
-) -> eyre::Result<Signed<Request<'_>>> {
+    kind: GroupRequestKind<'a>,
+) -> eyre::Result<Signed<Request<'a>>> {
     let signer_id: SignerId = signer_sk.verifying_key().to_bytes().rt()?;
 
     Ok(Signed::new(
@@ -49,12 +49,12 @@ fn make_group_request(
     )?)
 }
 
-fn make_context_request(
-    signer_sk: &SigningKey,
+fn make_context_request<'a>(
+    signer_sk: &'a SigningKey,
     context_id: Repr<ContextId>,
-    kind: ContextRequestKind<'_>,
+    kind: ContextRequestKind<'a>,
     nonce: u64,
-) -> eyre::Result<Signed<Request<'_>>> {
+) -> eyre::Result<Signed<Request<'a>>> {
     let signer_id: SignerId = signer_sk.verifying_key().to_bytes().rt()?;
 
     Ok(Signed::new(
@@ -68,9 +68,9 @@ fn make_context_request(
 
 struct TestContext {
     context_id: Repr<ContextId>,
-    context_sk: SigningKey,
-    author_id: Repr<ContextIdentity>,
-    author_sk: SigningKey,
+    _context_sk: SigningKey,
+    _author_id: Repr<ContextIdentity>,
+    _author_sk: SigningKey,
 }
 
 async fn create_test_context(
@@ -111,9 +111,9 @@ async fn create_test_context(
 
     Ok(TestContext {
         context_id,
-        context_sk,
-        author_id,
-        author_sk,
+        _context_sk: context_sk,
+        _author_id: author_id,
+        _author_sk: author_sk,
     })
 }
 
@@ -1340,8 +1340,8 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
                     new_app_id,
                     new_blob_id,
                     1024,
-                    "https://example.com/app.wasm".into(),
-                    "v2 upgrade".into(),
+                    Default::default(),
+                    Default::default(),
                 ),
             },
         )?)
