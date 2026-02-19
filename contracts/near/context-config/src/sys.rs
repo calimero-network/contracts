@@ -49,6 +49,15 @@ impl ContextConfigs {
         self.proxy_code.set(None);
         self.proxy_code_hash.set(None);
 
+        for (_, mut group) in self.groups.drain() {
+            group.admins.clear();
+            group.admin_nonces.clear();
+            group.members.clear();
+            group.approved_registrations.clear();
+            group.context_ids.clear();
+        }
+        self.context_group_refs.clear();
+
         env::log_str(&format!(
             "Post-erase storage usage: {}",
             env::storage_usage()

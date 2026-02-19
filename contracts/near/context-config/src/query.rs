@@ -2,11 +2,21 @@ use std::collections::BTreeMap;
 
 use calimero_context_config::repr::{Repr, ReprTransmute};
 use calimero_context_config::types::{
-    Application, Capability, ContextId, ContextIdentity, Revision, SignerId,
+    AppKey, Application, Capability, ContextGroupId, ContextId, ContextIdentity, Revision, SignerId,
 };
+use near_sdk::serde::Serialize;
 use near_sdk::{near, AccountId};
 
 use super::{ContextConfigs, ContextConfigsExt};
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct GroupInfoResponse {
+    pub app_key: Repr<AppKey>,
+    pub target_application: Application<'static>,
+    pub member_count: u64,
+    pub context_count: u64,
+}
 
 #[near]
 impl ContextConfigs {
@@ -132,5 +142,52 @@ impl ContextConfigs {
             .get(&context_id)?
             .member_nonces
             .get(&member_id)
+    }
+
+    pub fn group(&self, group_id: Repr<ContextGroupId>) -> Option<GroupInfoResponse> {
+        let group = self.groups.get(&group_id)?;
+
+        Some(GroupInfoResponse {
+            app_key: Repr::new(group.app_key),
+            target_application: Application::new(
+                group.target_application.id,
+                group.target_application.blob,
+                group.target_application.size,
+                group.target_application.source.clone(),
+                group.target_application.metadata.clone(),
+            ),
+            member_count: group.admins.len() as u64 + group.members.len() as u64,
+            context_count: group.context_count,
+        })
+    }
+
+    pub fn is_group_admin(&self, group_id: Repr<ContextGroupId>, identity: Repr<SignerId>) -> bool {
+        self.groups
+            .get(&group_id)
+            .map_or(false, |group| group.admins.contains(&identity))
+    }
+
+    pub fn group_contexts(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        offset: usize,
+        length: usize,
+    ) -> Vec<Repr<ContextId>> {
+        let Some(group) = self.groups.get(&group_id) else {
+            return vec![];
+        };
+        group
+            .context_ids
+            .iter()
+            .skip(offset)
+            .take(length)
+            .map(|cid| Repr::new(*cid))
+            .collect()
+    }
+
+    pub fn context_group(&self, context_id: Repr<ContextId>) -> Option<Repr<ContextGroupId>> {
+        self.context_group_refs
+            .get(&context_id)
+            .map(|gid| Repr::new(*gid))
     }
 }

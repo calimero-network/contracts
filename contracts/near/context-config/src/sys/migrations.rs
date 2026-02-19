@@ -18,6 +18,7 @@ const _: () = {
 migrations! {
     "01_guard_revisions" => "migrations/01_guard_revisions.rs",
     "02_nonces"          => "migrations/02_nonces.rs",
+    "03_context_groups"  => "migrations/03_context_groups.rs",
 }
 
 // ---
