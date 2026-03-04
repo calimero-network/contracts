@@ -144,6 +144,17 @@ impl ContextConfigs {
             .get(&member_id)
     }
 
+    pub fn fetch_group_nonce(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        admin_id: Repr<SignerId>,
+    ) -> Option<&u64> {
+        self.groups
+            .get(&group_id)?
+            .admin_nonces
+            .get(&admin_id)
+    }
+
     pub fn group(&self, group_id: Repr<ContextGroupId>) -> Option<GroupInfoResponse> {
         let group = self.groups.get(&group_id)?;
 
