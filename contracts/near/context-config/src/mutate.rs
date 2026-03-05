@@ -36,6 +36,7 @@ impl ContextConfigs {
                     group_request.kind,
                     GroupRequestKind::CommitGroupInvitation { .. }
                         | GroupRequestKind::RevealGroupInvitation { .. }
+                        | GroupRequestKind::JoinContextViaGroup { .. }
                 );
 
                 if !skip_nonce {
@@ -538,6 +539,12 @@ impl ContextConfigs {
             GroupRequestKind::RevealGroupInvitation { payload } => {
                 self.reveal_group_invitation(payload);
             }
+            GroupRequestKind::JoinContextViaGroup {
+                context_id,
+                new_member,
+            } => {
+                self.join_context_via_group(signer_id, group_id, context_id, new_member);
+            }
         }
     }
 
@@ -806,6 +813,60 @@ impl ContextConfigs {
         env::log_str(&format!(
             "Context `{}` approved for registration in group `{}`",
             context_id, group_id
+        ));
+    }
+
+    fn join_context_via_group(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+        new_member: Repr<ContextIdentity>,
+    ) {
+        let group = self.groups.get(&group_id).expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id) || group.members.contains(signer_id),
+            "caller is not a member of this group"
+        );
+
+        let context = self
+            .contexts
+            .get_mut(&context_id)
+            .expect("context does not exist");
+
+        require!(
+            context.group_id.as_ref() == Some(&*group_id),
+            "context does not belong to this group"
+        );
+
+        require!(
+            !context.members.contains(&new_member),
+            "identity is already a context member"
+        );
+
+        // Use any existing privileged signer on the members guard to bypass
+        // the normal ManageMembers check — group membership is the authorization.
+        let privileged_signer = context
+            .members
+            .priviledged()
+            .iter()
+            .next()
+            .copied()
+            .expect("context has no privileged member");
+
+        let mut ctx_members = context
+            .members
+            .get(&privileged_signer)
+            .expect("privileged signer lost access")
+            .get_mut();
+        let _ignored = ctx_members.insert(*new_member);
+
+        let _ignored = context.member_nonces.entry(*new_member).or_default();
+
+        env::log_str(&format!(
+            "Member `{}` joined context `{}` via group `{}`",
+            new_member, context_id, group_id
         ));
     }
 }

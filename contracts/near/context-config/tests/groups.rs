@@ -153,7 +153,7 @@ async fn test_create_and_query_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -307,7 +307,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -325,7 +325,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member1, member2].into(),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -357,7 +357,7 @@ async fn test_add_remove_group_members() -> eyre::Result<()> {
             GroupRequestKind::RemoveMembers {
                 members: vec![member1].into(),
             },
-        1,
+            1,
         )?)
         .max_gas()
         .transact()
@@ -418,7 +418,7 @@ async fn test_add_member_idempotent() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -436,7 +436,7 @@ async fn test_add_member_idempotent() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member1].into(),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -462,7 +462,7 @@ async fn test_add_member_idempotent() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member1].into(),
             },
-        1,
+            1,
         )?)
         .max_gas()
         .transact()
@@ -522,7 +522,7 @@ async fn test_remove_nonexistent_member_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -539,7 +539,7 @@ async fn test_remove_nonexistent_member_rejected() -> eyre::Result<()> {
             GroupRequestKind::RemoveMembers {
                 members: vec![never_added].into(),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -592,7 +592,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -609,7 +609,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             GroupRequestKind::AddMembers {
                 members: vec![member].into(),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -632,7 +632,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             GroupRequestKind::RemoveMembers {
                 members: vec![member].into(),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -653,7 +653,7 @@ async fn test_non_admin_operations_rejected() -> eyre::Result<()> {
             &non_admin_sk,
             group_id,
             GroupRequestKind::Delete,
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -705,7 +705,7 @@ async fn test_delete_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -726,7 +726,7 @@ async fn test_delete_group() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::Delete,
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -823,7 +823,7 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -840,7 +840,7 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -920,7 +920,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -937,7 +937,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -952,7 +952,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        1,
+            1,
         )?)
         .max_gas()
         .transact()
@@ -1004,7 +1004,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1021,7 +1021,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1036,7 +1036,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
-        1,
+            1,
         )?)
         .max_gas()
         .transact()
@@ -1122,7 +1122,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1139,7 +1139,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1162,7 +1162,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1214,7 +1214,7 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1234,7 +1234,7 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
                 GroupRequestKind::RegisterContext {
                     context_id: ctx.context_id,
                 },
-            group_nonce,
+                group_nonce,
             )?)
             .max_gas()
             .transact()
@@ -1315,7 +1315,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1332,7 +1332,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1345,7 +1345,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::Delete,
-        1,
+            1,
         )?)
         .max_gas()
         .transact()
@@ -1399,7 +1399,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
                         Default::default(),
                     ),
                 },
-            0,
+                0,
             )?)
             .max_gas()
             .transact()
@@ -1417,7 +1417,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1432,7 +1432,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
             GroupRequestKind::UnregisterContext {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1515,7 +1515,7 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1550,7 +1550,7 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1618,7 +1618,7 @@ async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1642,7 +1642,7 @@ async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1703,7 +1703,7 @@ async fn test_set_group_target_nonexistent_group() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1757,7 +1757,7 @@ async fn test_approve_context_registration() -> eyre::Result<()> {
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1774,7 +1774,7 @@ async fn test_approve_context_registration() -> eyre::Result<()> {
             GroupRequestKind::ApproveContextRegistration {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1830,7 +1830,7 @@ async fn test_non_admin_approve_context_registration_rejected() -> eyre::Result<
                     Default::default(),
                 ),
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()
@@ -1847,7 +1847,7 @@ async fn test_non_admin_approve_context_registration_rejected() -> eyre::Result<
             GroupRequestKind::ApproveContextRegistration {
                 context_id: ctx.context_id,
             },
-        0,
+            0,
         )?)
         .max_gas()
         .transact()

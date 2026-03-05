@@ -11,6 +11,13 @@ use super::{ContextConfigs, ContextConfigsExt};
 
 #[derive(Debug, Serialize)]
 #[serde(crate = "near_sdk::serde")]
+pub struct GroupMemberEntry {
+    pub identity: Repr<SignerId>,
+    pub role: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct GroupInfoResponse {
     pub app_key: Repr<AppKey>,
     pub target_application: Application<'static>,
@@ -149,10 +156,7 @@ impl ContextConfigs {
         group_id: Repr<ContextGroupId>,
         admin_id: Repr<SignerId>,
     ) -> Option<&u64> {
-        self.groups
-            .get(&group_id)?
-            .admin_nonces
-            .get(&admin_id)
+        self.groups.get(&group_id)?.admin_nonces.get(&admin_id)
     }
 
     pub fn group(&self, group_id: Repr<ContextGroupId>) -> Option<GroupInfoResponse> {
@@ -193,6 +197,32 @@ impl ContextConfigs {
             .skip(offset)
             .take(length)
             .map(|cid| Repr::new(*cid))
+            .collect()
+    }
+
+    pub fn group_members(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        offset: usize,
+        length: usize,
+    ) -> Vec<GroupMemberEntry> {
+        let Some(group) = self.groups.get(&group_id) else {
+            return vec![];
+        };
+
+        group
+            .admins
+            .iter()
+            .map(|id| GroupMemberEntry {
+                identity: Repr::new(*id),
+                role: "Admin".to_owned(),
+            })
+            .chain(group.members.iter().map(|id| GroupMemberEntry {
+                identity: Repr::new(*id),
+                role: "Member".to_owned(),
+            }))
+            .skip(offset)
+            .take(length)
             .collect()
     }
 
