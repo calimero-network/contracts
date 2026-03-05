@@ -12,6 +12,7 @@ use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::store::{IterableMap, IterableSet, LazyOption};
 use near_sdk::{near, AccountId, BlockHeight, BorshStorageKey, CryptoHash};
 
+pub mod group_invitation;
 pub mod invitation;
 
 mod guard;
@@ -69,6 +70,8 @@ pub struct OnChainGroupMeta {
     /// context count, instead of scanning the global `context_group_refs` map.
     pub context_ids: IterableSet<ContextId>,
     pub context_count: u64,
+    pub invitation_commitments: IterableMap<CryptoHash, BlockHeight>,
+    pub used_invitations: IterableSet<CryptoHash>,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]
@@ -90,6 +93,8 @@ enum Prefix {
     GroupMembers(ContextGroupId) = 13,
     GroupApprovedRegistrations(ContextGroupId) = 14,
     GroupContextIds(ContextGroupId) = 15,
+    GroupInvitationCommitments(ContextGroupId) = 16,
+    GroupUsedInvitations(ContextGroupId) = 17,
 }
 
 #[derive(Copy, Clone, Debug)]

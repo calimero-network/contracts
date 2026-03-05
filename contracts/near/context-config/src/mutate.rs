@@ -31,11 +31,21 @@ impl ContextConfigs {
             }) => (context_id, kind),
             RequestKind::Group(group_request) => {
                 let group_id = *group_request.group_id;
-                self.check_and_increment_group_nonce(
-                    group_id,
-                    &request.signer_id,
-                    request.nonce,
+
+                let skip_nonce = matches!(
+                    group_request.kind,
+                    GroupRequestKind::CommitGroupInvitation { .. }
+                        | GroupRequestKind::RevealGroupInvitation { .. }
                 );
+
+                if !skip_nonce {
+                    self.check_and_increment_group_nonce(
+                        group_id,
+                        &request.signer_id,
+                        request.nonce,
+                    );
+                }
+
                 self.handle_group_request(&request.signer_id, group_request);
                 return;
             }
@@ -519,6 +529,15 @@ impl ContextConfigs {
             GroupRequestKind::ApproveContextRegistration { context_id } => {
                 self.approve_context_registration(signer_id, group_id, context_id);
             }
+            GroupRequestKind::CommitGroupInvitation {
+                commitment_hash,
+                expiration_block_height,
+            } => {
+                self.commit_group_invitation(group_id, commitment_hash, expiration_block_height);
+            }
+            GroupRequestKind::RevealGroupInvitation { payload } => {
+                self.reveal_group_invitation(payload);
+            }
         }
     }
 
@@ -542,6 +561,10 @@ impl ContextConfigs {
             IterableSet::new(Prefix::GroupApprovedRegistrations(*group_id));
         let context_ids = IterableSet::new(Prefix::GroupContextIds(*group_id));
 
+        let invitation_commitments =
+            IterableMap::new(Prefix::GroupInvitationCommitments(*group_id));
+        let used_invitations = IterableSet::new(Prefix::GroupUsedInvitations(*group_id));
+
         let meta = OnChainGroupMeta {
             app_key,
             target_application: Application::new(
@@ -557,6 +580,8 @@ impl ContextConfigs {
             approved_registrations,
             context_ids,
             context_count: 0,
+            invitation_commitments,
+            used_invitations,
         };
 
         let _ignored = self.groups.insert(*group_id, meta);
@@ -585,6 +610,8 @@ impl ContextConfigs {
         removed.members.clear();
         removed.approved_registrations.clear();
         removed.context_ids.clear();
+        removed.invitation_commitments.clear();
+        removed.used_invitations.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -629,10 +656,7 @@ impl ContextConfigs {
         );
 
         for member in &members {
-            require!(
-                group.members.remove(&**member),
-                "member not in group"
-            );
+            require!(group.members.remove(&**member), "member not in group");
             env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
         }
     }
