@@ -3,7 +3,7 @@
 use std::time;
 
 use calimero_context_config::repr::{Repr, ReprTransmute};
-use calimero_context_config::types::{Application, Signed, SignerId};
+use calimero_context_config::types::{Application, ContextIdentity, Signed, SignerId};
 use calimero_context_config::{ContextRequest, ContextRequestKind, Request, RequestKind};
 use ed25519_dalek::{Signer, SigningKey};
 use near_sdk::serde::Serialize;
@@ -362,6 +362,235 @@ async fn migration_member_nonces() -> eyre::Result<()> {
     let nonce = res.expect("nonce not found");
 
     assert_eq!(nonce, 1);
+
+    Ok(())
+}
+
+/// Migration test for 03_context_groups.
+///
+/// Build WASM artifacts before running:
+///   # Pre-migration: build from the commit BEFORE context groups changes
+///   git stash && ./build.sh && cp res/calimero_context_config_near.wasm \
+///     res/calimero_context_config_near_migration_context_groups_pre.wasm && git stash pop
+///   # Post-migration: build with the migration feature enabled
+///   ./build.sh --migration 03_context_groups && cp res/calimero_context_config_near.wasm \
+///     res/calimero_context_config_near_migration_context_groups_post.wasm
+#[cfg_attr(not(feature = "03_context_groups"), ignore)]
+#[tokio::test]
+async fn migration_context_groups() -> eyre::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+
+    let wasm_v0 =
+        fs::read("res/calimero_context_config_near_migration_context_groups_pre.wasm").await?;
+    let wasm_v1 =
+        fs::read("res/calimero_context_config_near_migration_context_groups_post.wasm").await?;
+
+    let mut rng = rand::thread_rng();
+
+    let contract_v0 = worker.dev_deploy(&wasm_v0).await?;
+
+    let context_proxy_blob =
+        fs::read("../context-proxy/res/calimero_context_proxy_near.wasm").await?;
+
+    let _ignored = contract_v0
+        .call("set_proxy_code")
+        .args(context_proxy_blob)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let root_account = worker.root_account()?;
+
+    let node1 = root_account
+        .create_subaccount("node1")
+        .initial_balance(NearToken::from_near(1))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let alice_cx_sk = SigningKey::from_bytes(&rng.gen());
+    let alice_cx_pk = alice_cx_sk.verifying_key();
+    let alice_cx_id = alice_cx_pk.to_bytes().rt()?;
+
+    let context_secret = SigningKey::from_bytes(&rng.gen());
+    let context_public = context_secret.verifying_key();
+    let context_id = context_public.to_bytes().rt()?;
+
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    // Create a context on the pre-migration contract
+    let res = node1
+        .call(contract_v0.id(), "mutate")
+        .args_json(Signed::new(
+            &{
+                let kind = RequestKind::Context(ContextRequest::new(
+                    context_id,
+                    ContextRequestKind::Add {
+                        author_id: alice_cx_id,
+                        application: Application::new(
+                            application_id,
+                            blob_id,
+                            0,
+                            Default::default(),
+                            Default::default(),
+                        ),
+                    },
+                ));
+
+                Request::new(context_id.rt()?, kind, 0)
+            },
+            |p| context_secret.sign(p),
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    assert!(
+        res.logs()
+            .contains(&format!("Context `{}` added", context_id).as_str()),
+        "{:?}",
+        res.logs()
+    );
+
+    // Verify application query works on v0
+    let res = contract_v0
+        .view("application")
+        .args_json(json!({ "context_id": context_id }))
+        .await?;
+
+    let res: Application<'_> = serde_json::from_slice(&res.result)?;
+
+    assert_eq!(res.id, application_id);
+    assert_eq!(res.blob, blob_id);
+    assert_eq!(res.size, 0);
+
+    // Verify members query works on v0
+    let members: Vec<Repr<ContextIdentity>> = contract_v0
+        .view("members")
+        .args_json(json!({ "context_id": context_id, "offset": 0, "length": 10 }))
+        .await?
+        .json()?;
+
+    assert_eq!(members.len(), 1);
+
+    // Deploy post-migration contract
+    let contract_v1 = contract_v0
+        .as_account()
+        .deploy(&wasm_v1)
+        .await?
+        .into_result()?;
+
+    // Queries should fail before migration (state format mismatch)
+    let query_err = contract_v1
+        .view("application")
+        .args_json(json!({ "context_id": context_id }))
+        .await
+        .expect_err("should've failed before migration");
+
+    {
+        let err = format!("{:?}", query_err);
+        assert!(
+            err.contains("Cannot deserialize") || err.contains("cannot deserialize"),
+            "expected deserialization error, got: {}",
+            err
+        );
+    }
+
+    // Run migration
+    let migration = contract_v1
+        .call("migrate")
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    dbg!(migration.logs());
+
+    // Verify application query works after migration
+    let res = contract_v1
+        .view("application")
+        .args_json(json!({ "context_id": context_id }))
+        .await?;
+
+    let res: Application<'_> = serde_json::from_slice(&res.result)?;
+
+    assert_eq!(res.id, application_id);
+    assert_eq!(res.blob, blob_id);
+    assert_eq!(res.size, 0);
+    assert_eq!(res.source, Default::default());
+    assert_eq!(res.metadata, Default::default());
+
+    // Verify members are preserved after migration
+    let members: Vec<Repr<ContextIdentity>> = contract_v1
+        .view("members")
+        .args_json(json!({ "context_id": context_id, "offset": 0, "length": 10 }))
+        .await?
+        .json()?;
+
+    assert_eq!(members.len(), 1);
+    assert_eq!(*members[0], *alice_cx_id);
+
+    // Verify nonce is preserved
+    let nonce: Option<u64> = contract_v1
+        .view("fetch_nonce")
+        .args_json(json!({ "context_id": context_id, "member_id": alice_cx_id }))
+        .await?
+        .json()?;
+
+    assert_eq!(nonce, Some(0));
+
+    // Verify contract still functions: update application post-migration
+    let new_application_id = rng.gen::<[_; 32]>().rt()?;
+    let new_blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let res = node1
+        .call(contract_v1.id(), "mutate")
+        .args_json(Signed::new(
+            &{
+                let kind = RequestKind::Context(ContextRequest::new(
+                    context_id,
+                    ContextRequestKind::UpdateApplication {
+                        application: Application::new(
+                            new_application_id,
+                            new_blob_id,
+                            1,
+                            Default::default(),
+                            Default::default(),
+                        ),
+                    },
+                ));
+
+                Request::new(alice_cx_id.rt()?, kind, 0)
+            },
+            |p| alice_cx_sk.sign(p),
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    assert_eq!(
+        res.logs(),
+        [format!(
+            "Updated application for context `{}` from `{}` to `{}`",
+            context_id, application_id, new_application_id
+        )]
+    );
+
+    // Verify the update took effect
+    let res = contract_v1
+        .view("application")
+        .args_json(json!({ "context_id": context_id }))
+        .await?;
+
+    let res: Application<'_> = serde_json::from_slice(&res.result)?;
+
+    assert_eq!(res.id, new_application_id);
+    assert_eq!(res.blob, new_blob_id);
+    assert_eq!(res.size, 1);
 
     Ok(())
 }

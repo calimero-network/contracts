@@ -4,12 +4,15 @@
     reason = "Needed to separate NEAR functionality"
 )]
 
-use calimero_context_config::types::{Application, ContextId, ContextIdentity};
+use calimero_context_config::types::{
+    AppKey, Application, ContextGroupId, ContextId, ContextIdentity, SignerId,
+};
 use calimero_context_config::Timestamp;
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::store::{IterableMap, IterableSet, LazyOption};
 use near_sdk::{near, AccountId, BlockHeight, BorshStorageKey, CryptoHash};
 
+pub mod group_invitation;
 pub mod invitation;
 
 mod guard;
@@ -29,6 +32,8 @@ pub struct ContextConfigs {
     proxy_code: LazyOption<Vec<u8>>,
     proxy_code_hash: LazyOption<CryptoHash>,
     next_proxy_id: u64,
+    groups: IterableMap<ContextGroupId, OnChainGroupMeta>,
+    context_group_refs: IterableMap<ContextId, ContextGroupId>,
 }
 
 #[derive(Debug)]
@@ -48,6 +53,31 @@ struct Context {
     pub used_open_invitations: Guard<IterableSet<CryptoHash>>,
     /// A map that stores pending commitments for the given context.
     pub commitments_open_invitations: IterableMap<CryptoHash, BlockHeight>,
+    pub group_id: Option<ContextGroupId>,
+}
+
+#[derive(Debug)]
+#[near(serializers = [borsh])]
+pub struct OnChainGroupMeta {
+    pub app_key: AppKey,
+    pub target_application: Application<'static>,
+    pub admins: IterableSet<SignerId>,
+    pub admin_nonces: IterableMap<SignerId, u64>,
+    pub members: IterableSet<SignerId>,
+    pub approved_registrations: IterableSet<ContextId>,
+    /// Forward index: contexts that belong to this group.
+    /// Enables O(k) pagination in `group_contexts` where k is this group's
+    /// context count, instead of scanning the global `context_group_refs` map.
+    pub context_ids: IterableSet<ContextId>,
+    pub context_count: u64,
+    pub invitation_commitments: IterableMap<CryptoHash, BlockHeight>,
+    pub used_invitations: IterableSet<CryptoHash>,
+    /// Maps (signer_id, context_id) -> context_identity for group-authorized joins.
+    /// Populated by join_context_via_group and consumed during cascading removals.
+    pub member_contexts: IterableMap<(SignerId, ContextId), ContextIdentity>,
+    /// Optional migration method name for lazy upgrades (e.g. "migrate_v1_to_v2").
+    /// Set by `set_group_target` and read by peer nodes during group sync.
+    pub migration_method: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]
@@ -62,6 +92,16 @@ enum Prefix {
     MemberNonces(ContextId) = 6,
     UsedOpenInvitations(ContextId) = 7,
     CommitmentsOpenInvitations(ContextId) = 8,
+    Groups = 9,
+    GroupAdmins(ContextGroupId) = 10,
+    ContextGroupRefs = 11,
+    GroupAdminNonces(ContextGroupId) = 12,
+    GroupMembers(ContextGroupId) = 13,
+    GroupApprovedRegistrations(ContextGroupId) = 14,
+    GroupContextIds(ContextGroupId) = 15,
+    GroupInvitationCommitments(ContextGroupId) = 16,
+    GroupUsedInvitations(ContextGroupId) = 17,
+    GroupMemberContexts(ContextGroupId) = 18,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -88,6 +128,8 @@ impl Default for ContextConfigs {
             proxy_code: LazyOption::new(Prefix::ProxyCode, None),
             proxy_code_hash: LazyOption::new(Prefix::ProxyCodeHash, None),
             next_proxy_id: 0,
+            groups: IterableMap::new(Prefix::Groups),
+            context_group_refs: IterableMap::new(Prefix::ContextGroupRefs),
         }
     }
 }
