@@ -571,6 +571,7 @@ impl ContextConfigs {
         let invitation_commitments =
             IterableMap::new(Prefix::GroupInvitationCommitments(*group_id));
         let used_invitations = IterableSet::new(Prefix::GroupUsedInvitations(*group_id));
+        let member_contexts = IterableMap::new(Prefix::GroupMemberContexts(*group_id));
 
         let meta = OnChainGroupMeta {
             app_key,
@@ -589,6 +590,7 @@ impl ContextConfigs {
             context_count: 0,
             invitation_commitments,
             used_invitations,
+            member_contexts,
         };
 
         let _ignored = self.groups.insert(*group_id, meta);
@@ -619,6 +621,7 @@ impl ContextConfigs {
         removed.context_ids.clear();
         removed.invitation_commitments.clear();
         removed.used_invitations.clear();
+        removed.member_contexts.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -652,19 +655,54 @@ impl ContextConfigs {
         group_id: Repr<ContextGroupId>,
         members: Vec<Repr<SignerId>>,
     ) {
-        let group = self
-            .groups
-            .get_mut(&group_id)
-            .expect("group does not exist");
+        let mut to_remove_from_contexts = Vec::new();
 
-        require!(
-            group.admins.contains(signer_id),
-            "only group admins can remove members"
-        );
+        {
+            let group = self
+                .groups
+                .get_mut(&group_id)
+                .expect("group does not exist");
 
-        for member in &members {
-            require!(group.members.remove(&**member), "member not in group");
-            env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
+            require!(
+                group.admins.contains(signer_id),
+                "only group admins can remove members"
+            );
+
+            let context_ids: Vec<ContextId> = group.context_ids.iter().copied().collect();
+
+            for member in &members {
+                require!(group.members.remove(&**member), "member not in group");
+                env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
+
+                for context_id in &context_ids {
+                    if let Some(context_identity) = group
+                        .member_contexts
+                        .remove(&((**member).clone(), *context_id))
+                    {
+                        to_remove_from_contexts.push((*context_id, context_identity));
+                    }
+                }
+            }
+        }
+
+        for (context_id, context_identity) in &to_remove_from_contexts {
+            let Some(context) = self.contexts.get_mut(context_id) else {
+                continue;
+            };
+
+            let context_members = context.members.authorized_get_mut();
+            let _removed = context_members.remove(context_identity);
+            let _ignored = context.member_nonces.remove(context_identity);
+
+            let identity = context_identity.rt().expect("infallible conversion");
+            context.members.priviledges().revoke(&identity);
+            context.application.priviledges().revoke(&identity);
+
+            env::log_str(&format!(
+                "Cascade-removed `{}` from context `{}`",
+                Repr::new(*context_identity),
+                Repr::new(*context_id)
+            ));
         }
     }
 
@@ -744,6 +782,15 @@ impl ContextConfigs {
             .get_mut(&group_id)
             .expect("group does not exist");
         let _ignored = group.context_ids.remove(&context_id);
+        let all_signers: Vec<SignerId> = group
+            .members
+            .iter()
+            .chain(group.admins.iter())
+            .copied()
+            .collect();
+        for signer in &all_signers {
+            let _ignored = group.member_contexts.remove(&(signer.clone(), *context_id));
+        }
         require!(group.context_count > 0, "context count underflow");
         group.context_count -= 1;
 
@@ -823,46 +870,42 @@ impl ContextConfigs {
         context_id: Repr<ContextId>,
         new_member: Repr<ContextIdentity>,
     ) {
-        let group = self.groups.get(&group_id).expect("group does not exist");
+        {
+            let group = self.groups.get(&group_id).expect("group does not exist");
+            require!(
+                group.admins.contains(signer_id) || group.members.contains(signer_id),
+                "caller is not a member of this group"
+            );
+        }
 
-        require!(
-            group.admins.contains(signer_id) || group.members.contains(signer_id),
-            "caller is not a member of this group"
-        );
+        {
+            let context = self
+                .contexts
+                .get_mut(&context_id)
+                .expect("context does not exist");
 
-        let context = self
-            .contexts
-            .get_mut(&context_id)
-            .expect("context does not exist");
+            require!(
+                context.group_id.as_ref() == Some(&*group_id),
+                "context does not belong to this group"
+            );
 
-        require!(
-            context.group_id.as_ref() == Some(&*group_id),
-            "context does not belong to this group"
-        );
+            require!(
+                !context.members.contains(&new_member),
+                "identity is already a context member"
+            );
 
-        require!(
-            !context.members.contains(&new_member),
-            "identity is already a context member"
-        );
+            let context_members = context.members.authorized_get_mut();
+            let _ignored = context_members.insert(*new_member);
+            let _ignored = context.member_nonces.entry(*new_member).or_default();
+        }
 
-        // Use any existing privileged signer on the members guard to bypass
-        // the normal ManageMembers check — group membership is the authorization.
-        let privileged_signer = context
-            .members
-            .priviledged()
-            .iter()
-            .next()
-            .copied()
-            .expect("context has no privileged member");
-
-        let mut ctx_members = context
-            .members
-            .get(&privileged_signer)
-            .expect("privileged signer lost access")
-            .get_mut();
-        let _ignored = ctx_members.insert(*new_member);
-
-        let _ignored = context.member_nonces.entry(*new_member).or_default();
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+        let _ignored = group
+            .member_contexts
+            .insert((signer_id.clone(), *context_id), *new_member);
 
         env::log_str(&format!(
             "Member `{}` joined context `{}` via group `{}`",

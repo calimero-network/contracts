@@ -72,6 +72,9 @@ pub struct OnChainGroupMeta {
     pub context_count: u64,
     pub invitation_commitments: IterableMap<CryptoHash, BlockHeight>,
     pub used_invitations: IterableSet<CryptoHash>,
+    /// Maps (signer_id, context_id) -> context_identity for group-authorized joins.
+    /// Populated by join_context_via_group and consumed during cascading removals.
+    pub member_contexts: IterableMap<(SignerId, ContextId), ContextIdentity>,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]
@@ -95,6 +98,7 @@ enum Prefix {
     GroupContextIds(ContextGroupId) = 15,
     GroupInvitationCommitments(ContextGroupId) = 16,
     GroupUsedInvitations(ContextGroupId) = 17,
+    GroupMemberContexts(ContextGroupId) = 18,
 }
 
 #[derive(Copy, Clone, Debug)]
