@@ -23,6 +23,7 @@ pub struct GroupInfoResponse {
     pub target_application: Application<'static>,
     pub member_count: u64,
     pub context_count: u64,
+    pub migration_method: Option<String>,
 }
 
 #[near]
@@ -173,6 +174,7 @@ impl ContextConfigs {
             ),
             member_count: group.admins.len() as u64 + group.members.len() as u64,
             context_count: group.context_count,
+            migration_method: group.migration_method.clone(),
         })
     }
 

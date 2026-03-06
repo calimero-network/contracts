@@ -16,10 +16,11 @@ const _: () = {
 };
 
 migrations! {
-    "01_guard_revisions"    => "migrations/01_guard_revisions.rs",
-    "02_nonces"             => "migrations/02_nonces.rs",
-    "03_context_groups"     => "migrations/03_context_groups.rs",
-    "04_group_invitations"  => "migrations/04_group_invitations.rs",
+    "01_guard_revisions"        => "migrations/01_guard_revisions.rs",
+    "02_nonces"                 => "migrations/02_nonces.rs",
+    "03_context_groups"         => "migrations/03_context_groups.rs",
+    "04_group_invitations"      => "migrations/04_group_invitations.rs",
+    "05_group_migration_method" => "migrations/05_group_migration_method.rs",
 }
 
 // ---

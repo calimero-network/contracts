@@ -524,8 +524,11 @@ impl ContextConfigs {
             GroupRequestKind::UnregisterContext { context_id } => {
                 self.unregister_context_from_group(signer_id, group_id, context_id);
             }
-            GroupRequestKind::SetTargetApplication { target_application } => {
-                self.set_group_target(signer_id, group_id, target_application);
+            GroupRequestKind::SetTargetApplication {
+                target_application,
+                migration_method,
+            } => {
+                self.set_group_target(signer_id, group_id, target_application, migration_method);
             }
             GroupRequestKind::ApproveContextRegistration { context_id } => {
                 self.approve_context_registration(signer_id, group_id, context_id);
@@ -591,6 +594,7 @@ impl ContextConfigs {
             invitation_commitments,
             used_invitations,
             member_contexts,
+            migration_method: None,
         };
 
         let _ignored = self.groups.insert(*group_id, meta);
@@ -807,6 +811,7 @@ impl ContextConfigs {
         signer_id: &SignerId,
         group_id: Repr<ContextGroupId>,
         target_application: Application<'_>,
+        migration_method: Option<String>,
     ) {
         let group = self
             .groups
@@ -827,6 +832,7 @@ impl ContextConfigs {
             target_application.source.to_owned(),
             target_application.metadata.to_owned(),
         );
+        group.migration_method = migration_method;
 
         env::log_str(&format!(
             "Updated target application for group `{}` from `{}` to `{}`",

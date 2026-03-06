@@ -75,6 +75,9 @@ pub struct OnChainGroupMeta {
     /// Maps (signer_id, context_id) -> context_identity for group-authorized joins.
     /// Populated by join_context_via_group and consumed during cascading removals.
     pub member_contexts: IterableMap<(SignerId, ContextId), ContextIdentity>,
+    /// Optional migration method name for lazy upgrades (e.g. "migrate_v1_to_v2").
+    /// Set by `set_group_target` and read by peer nodes during group sync.
+    pub migration_method: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]

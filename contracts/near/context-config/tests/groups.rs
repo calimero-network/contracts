@@ -1542,6 +1542,7 @@ async fn test_set_group_target_application() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::SetTargetApplication {
+                migration_method: None,
                 target_application: Application::new(
                     new_app_id,
                     new_blob_id,
@@ -1634,6 +1635,7 @@ async fn test_set_group_target_non_admin_rejected() -> eyre::Result<()> {
             &non_admin_sk,
             group_id,
             GroupRequestKind::SetTargetApplication {
+                migration_method: None,
                 target_application: Application::new(
                     new_app_id,
                     new_blob_id,
@@ -1695,6 +1697,7 @@ async fn test_set_group_target_nonexistent_group() -> eyre::Result<()> {
             &admin_sk,
             group_id,
             GroupRequestKind::SetTargetApplication {
+                migration_method: None,
                 target_application: Application::new(
                     new_app_id,
                     new_blob_id,
