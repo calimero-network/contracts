@@ -5,7 +5,8 @@ use calimero_context_config::types::{
     AppKey, Application, ContextGroupId, ContextId, ContextIdentity, Signed, SignerId,
 };
 use calimero_context_config::{
-    ContextRequest, ContextRequestKind, GroupRequest, GroupRequestKind, Request, RequestKind,
+    ContextRequest, ContextRequestKind, GroupRequest, GroupRequestKind, MemberCapabilities,
+    Request, RequestKind, VisibilityMode,
 };
 use ed25519_dalek::{Signer, SigningKey};
 use near_workspaces::types::NearToken;
@@ -839,6 +840,7 @@ async fn test_register_context_in_group() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -936,6 +938,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -951,6 +954,7 @@ async fn test_double_register_rejected() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             1,
         )?)
@@ -1020,6 +1024,7 @@ async fn test_unregister_context_from_group() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -1138,6 +1143,7 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -1233,6 +1239,7 @@ async fn test_group_contexts_pagination() -> eyre::Result<()> {
                 group_id,
                 GroupRequestKind::RegisterContext {
                     context_id: ctx.context_id,
+                    visibility_mode: None,
                 },
                 group_nonce,
             )?)
@@ -1331,6 +1338,7 @@ async fn test_delete_group_with_contexts_rejected() -> eyre::Result<()> {
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -1416,6 +1424,7 @@ async fn test_unregister_wrong_group_rejected() -> eyre::Result<()> {
             group_id1,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             0,
         )?)
@@ -1864,6 +1873,888 @@ async fn test_non_admin_approve_context_registration_rejected() -> eyre::Result<
         "Expected 'only group admins can approve context registrations', got: {}",
         err_str
     );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Permission / Capability Tests
+// ---------------------------------------------------------------------------
+
+/// Helper: create a group with an admin, return (node, admin_sk, group_id).
+async fn setup_group(
+    worker: &Worker<Sandbox>,
+    contract: &Contract,
+    rng: &mut impl Rng,
+) -> eyre::Result<(near_workspaces::Account, SigningKey, Repr<ContextGroupId>)> {
+    let root_account = worker.root_account()?;
+    let node = root_account
+        .create_subaccount(&format!("n{}", rng.gen::<u32>()))
+        .initial_balance(NearToken::from_near(30))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let admin_sk = SigningKey::from_bytes(&rng.gen());
+    let group_id: Repr<ContextGroupId> = rng.gen::<[_; 32]>().rt()?;
+    let app_key: Repr<AppKey> = rng.gen::<[_; 32]>().rt()?;
+    let application_id = rng.gen::<[_; 32]>().rt()?;
+    let blob_id = rng.gen::<[_; 32]>().rt()?;
+
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::Create {
+                app_key,
+                target_application: Application::new(
+                    application_id,
+                    blob_id,
+                    0,
+                    Default::default(),
+                    Default::default(),
+                ),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    Ok((node, admin_sk, group_id))
+}
+
+/// Helper: add a member to a group and return their signing key.
+async fn add_member(
+    node: &near_workspaces::Account,
+    contract: &Contract,
+    admin_sk: &SigningKey,
+    group_id: Repr<ContextGroupId>,
+    rng: &mut impl Rng,
+    nonce: u64,
+) -> eyre::Result<SigningKey> {
+    let member_sk = SigningKey::from_bytes(&rng.gen());
+    let member_id: Repr<SignerId> = member_sk.verifying_key().to_bytes().rt()?;
+
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            admin_sk,
+            group_id,
+            GroupRequestKind::AddMembers {
+                members: vec![member_id].into(),
+            },
+            nonce,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    Ok(member_sk)
+}
+
+#[tokio::test]
+async fn test_member_with_can_create_context_registers_context() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // Add member Bob
+    let bob_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 0).await?;
+    let bob_id: Repr<SignerId> = bob_sk.verifying_key().to_bytes().rt()?;
+
+    // Grant Bob CAN_CREATE_CONTEXT
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetMemberCapabilities {
+                member: bob_id,
+                capabilities: MemberCapabilities::CAN_CREATE_CONTEXT,
+            },
+            1,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Create a context first (needed to register it in the group)
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // Bob registers the context in the group — should succeed
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &bob_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: None,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Verify context is registered
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["context_count"], 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_member_without_can_create_context_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // Add member Bob (gets default capabilities: CAN_JOIN_OPEN_CONTEXTS only)
+    let bob_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 0).await?;
+
+    // Create context
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // Bob tries to register context — should fail (no CAN_CREATE_CONTEXT)
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &bob_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: None,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("member without CAN_CREATE_CONTEXT should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("insufficient capabilities to create context"),
+        "Expected 'insufficient capabilities to create context', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_admin_bypasses_capability_check_for_register_context() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // Admin registers context — always works regardless of capabilities
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: None,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["context_count"], 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_creator_auto_added_to_allowlist_on_restricted_context() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // Register context as Restricted
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Restricted),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Check visibility
+    let vis: serde_json::Value = contract
+        .view("context_visibility")
+        .args_json(json!({
+            "group_id": group_id,
+            "context_id": ctx.context_id,
+        }))
+        .await?
+        .json()?;
+
+    assert_eq!(vis["mode"], "Restricted");
+    assert_eq!(vis["allowlist_count"], 1, "creator should be auto-added to allowlist");
+
+    // Check the creator is on the allowlist
+    let admin_id: Repr<SignerId> = admin_sk.verifying_key().to_bytes().rt()?;
+    let allowlist: Vec<serde_json::Value> = contract
+        .view("context_allowlist")
+        .args_json(json!({
+            "group_id": group_id,
+            "context_id": ctx.context_id,
+            "offset": 0,
+            "length": 10,
+        }))
+        .await?
+        .json()?;
+
+    assert_eq!(allowlist.len(), 1);
+    assert_eq!(allowlist[0], json!(admin_id));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_join_open_context_blocked_without_capability() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 0: RegisterContext
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Open),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Dave)
+    let dave_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let dave_id: Repr<SignerId> = dave_sk.verifying_key().to_bytes().rt()?;
+
+    // nonce 2: SetMemberCapabilities — set Dave's capabilities to 0
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetMemberCapabilities {
+                member: dave_id,
+                capabilities: 0,
+            },
+            2,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Dave tries to join — JoinContextViaGroup skips nonce check
+    let new_member_id: Repr<ContextIdentity> = dave_sk.verifying_key().to_bytes().rt()?;
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &dave_sk,
+            group_id,
+            GroupRequestKind::JoinContextViaGroup {
+                context_id: ctx.context_id,
+                new_member: new_member_id,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("member without CAN_JOIN_OPEN_CONTEXTS should fail");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("insufficient capabilities to join open context"),
+        "Expected 'insufficient capabilities to join open context', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_join_restricted_context_blocked_for_non_allowlist() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 0: RegisterContext as Restricted
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Restricted),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Dave)
+    let dave_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let dave_member: Repr<ContextIdentity> = dave_sk.verifying_key().to_bytes().rt()?;
+
+    // Dave tries to join — nonce skipped for JoinContextViaGroup
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &dave_sk,
+            group_id,
+            GroupRequestKind::JoinContextViaGroup {
+                context_id: ctx.context_id,
+                new_member: dave_member,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-allowlist member should fail to join restricted context");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("not on allowlist for this restricted context"),
+        "Expected 'not on allowlist for this restricted context', got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_allowlist_member_can_join_restricted_context() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 0: RegisterContext as Restricted
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Restricted),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Carol)
+    let carol_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let carol_id: Repr<SignerId> = carol_sk.verifying_key().to_bytes().rt()?;
+
+    // nonce 2: ManageContextAllowlist — add Carol
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::ManageContextAllowlist {
+                context_id: ctx.context_id,
+                add: vec![carol_id],
+                remove: vec![],
+            },
+            2,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Carol joins — nonce skipped for JoinContextViaGroup
+    let carol_member: Repr<ContextIdentity> = carol_sk.verifying_key().to_bytes().rt()?;
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &carol_sk,
+            group_id,
+            GroupRequestKind::JoinContextViaGroup {
+                context_id: ctx.context_id,
+                new_member: carol_member,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_new_members_get_default_capabilities() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // Verify default capabilities are CAN_JOIN_OPEN_CONTEXTS
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(
+        group_info["default_member_capabilities"],
+        MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS as u64,
+        "default should be CAN_JOIN_OPEN_CONTEXTS"
+    );
+
+    // nonce 0: AddMembers (Bob)
+    let bob_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 0).await?;
+    let bob_id: Repr<SignerId> = bob_sk.verifying_key().to_bytes().rt()?;
+
+    // Query group members to check Bob's capabilities
+    let members: Vec<serde_json::Value> = contract
+        .view("group_members")
+        .args_json(json!({
+            "group_id": group_id,
+            "offset": 0,
+            "length": 10,
+        }))
+        .await?
+        .json()?;
+
+    let bob_entry = members
+        .iter()
+        .find(|m| m["identity"] == json!(bob_id))
+        .expect("Bob should be in member list");
+    assert_eq!(
+        bob_entry["capabilities"],
+        MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS as u64,
+        "Bob should have default CAN_JOIN_OPEN_CONTEXTS"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_member_capabilities_rejected_for_non_admin() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // nonce 0: AddMembers (Bob)
+    let bob_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 0).await?;
+    // nonce 1: AddMembers (Carol)
+    let carol_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let carol_id: Repr<SignerId> = carol_sk.verifying_key().to_bytes().rt()?;
+
+    // Bob (non-admin) tries to set Carol's capabilities — nonce check skipped (not admin)
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &bob_sk,
+            group_id,
+            GroupRequestKind::SetMemberCapabilities {
+                member: carol_id,
+                capabilities: MemberCapabilities::CAN_CREATE_CONTEXT,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-admin should not be able to set capabilities");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only group admins"),
+        "Expected admin-only error, got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_default_capabilities_lockdown_mode() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // nonce 0: SetDefaultCapabilities to 0 (lockdown mode)
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetDefaultCapabilities {
+                default_capabilities: 0,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Dave)
+    let dave_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let dave_id: Repr<SignerId> = dave_sk.verifying_key().to_bytes().rt()?;
+
+    // Verify Dave has 0 capabilities
+    let members: Vec<serde_json::Value> = contract
+        .view("group_members")
+        .args_json(json!({
+            "group_id": group_id,
+            "offset": 0,
+            "length": 10,
+        }))
+        .await?
+        .json()?;
+
+    let dave_entry = members
+        .iter()
+        .find(|m| m["identity"] == json!(dave_id))
+        .expect("Dave should be in member list");
+    assert_eq!(
+        dave_entry["capabilities"], 0,
+        "Dave should have 0 capabilities in lockdown mode"
+    );
+
+    // Dave should not be able to join an open context
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 2: RegisterContext as Open
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Open),
+            },
+            2,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Dave tries to join — nonce skipped for JoinContextViaGroup
+    let dave_member: Repr<ContextIdentity> = dave_sk.verifying_key().to_bytes().rt()?;
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &dave_sk,
+            group_id,
+            GroupRequestKind::JoinContextViaGroup {
+                context_id: ctx.context_id,
+                new_member: dave_member,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("lockdown member should not join open context");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("insufficient capabilities to join open context"),
+        "Expected capability error, got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_default_visibility_restricted() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    // nonce 0: SetDefaultVisibility to Restricted
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::SetDefaultVisibility {
+                default_visibility: VisibilityMode::Restricted,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Verify group info
+    let group_info: serde_json::Value = contract
+        .view("group")
+        .args_json(json!({ "group_id": group_id }))
+        .await?
+        .json()?;
+    assert_eq!(group_info["default_context_visibility"], "Restricted");
+
+    // Register a context with None visibility (should inherit Restricted)
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 1: RegisterContext with None (inherits Restricted)
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: None,
+            },
+            1,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Verify the context inherited Restricted visibility
+    let vis: serde_json::Value = contract
+        .view("context_visibility")
+        .args_json(json!({
+            "group_id": group_id,
+            "context_id": ctx.context_id,
+        }))
+        .await?
+        .json()?;
+
+    assert_eq!(vis["mode"], "Restricted");
+    assert_eq!(vis["allowlist_count"], 1, "creator auto-added to allowlist");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_context_visibility_by_non_creator_non_admin_rejected() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 0: RegisterContext as Open (admin is the creator)
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Open),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Bob)
+    let bob_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+
+    // Bob (non-creator, non-admin) tries to change visibility — nonce check skipped
+    let err = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &bob_sk,
+            group_id,
+            GroupRequestKind::SetContextVisibility {
+                context_id: ctx.context_id,
+                mode: VisibilityMode::Restricted,
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .raw_bytes()
+        .expect_err("non-creator non-admin should not change visibility");
+
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("only the context creator or a group admin"),
+        "Expected creator/admin error, got: {}",
+        err_str
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_manage_allowlist_add_and_remove() -> eyre::Result<()> {
+    let (worker, contract) = setup().await?;
+    let mut rng = rand::thread_rng();
+
+    let (node, admin_sk, group_id) = setup_group(&worker, &contract, &mut rng).await?;
+
+    let ctx = create_test_context(&node, &contract, &mut rng).await?;
+
+    // nonce 0: RegisterContext as Restricted
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::RegisterContext {
+                context_id: ctx.context_id,
+                visibility_mode: Some(VisibilityMode::Restricted),
+            },
+            0,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // nonce 1: AddMembers (Carol)
+    let carol_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 1).await?;
+    let carol_id: Repr<SignerId> = carol_sk.verifying_key().to_bytes().rt()?;
+    // nonce 2: AddMembers (Dave)
+    let dave_sk = add_member(&node, &contract, &admin_sk, group_id, &mut rng, 2).await?;
+    let dave_id: Repr<SignerId> = dave_sk.verifying_key().to_bytes().rt()?;
+
+    // nonce 3: ManageContextAllowlist — add Carol and Dave
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::ManageContextAllowlist {
+                context_id: ctx.context_id,
+                add: vec![carol_id, dave_id],
+                remove: vec![],
+            },
+            3,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Check allowlist has 3 (admin auto-added + Carol + Dave)
+    let allowlist: Vec<serde_json::Value> = contract
+        .view("context_allowlist")
+        .args_json(json!({
+            "group_id": group_id,
+            "context_id": ctx.context_id,
+            "offset": 0,
+            "length": 10,
+        }))
+        .await?
+        .json()?;
+    assert_eq!(allowlist.len(), 3, "should have 3 on allowlist");
+
+    // nonce 4: ManageContextAllowlist — remove Dave
+    let _res = node
+        .call(contract.id(), "mutate")
+        .args_json(make_group_request(
+            &admin_sk,
+            group_id,
+            GroupRequestKind::ManageContextAllowlist {
+                context_id: ctx.context_id,
+                add: vec![],
+                remove: vec![dave_id],
+            },
+            4,
+        )?)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    // Check allowlist has 2
+    let allowlist: Vec<serde_json::Value> = contract
+        .view("context_allowlist")
+        .args_json(json!({
+            "group_id": group_id,
+            "context_id": ctx.context_id,
+            "offset": 0,
+            "length": 10,
+        }))
+        .await?
+        .json()?;
+    assert_eq!(allowlist.len(), 2, "should have 2 after removing Dave");
 
     Ok(())
 }
