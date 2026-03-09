@@ -21,6 +21,7 @@ migrations! {
     "03_context_groups"         => "migrations/03_context_groups.rs",
     "04_group_invitations"      => "migrations/04_group_invitations.rs",
     "05_group_migration_method" => "migrations/05_group_migration_method.rs",
+    "06_group_permissions"      => "migrations/06_group_permissions.rs",
 }
 
 // ---

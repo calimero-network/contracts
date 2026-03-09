@@ -12,8 +12,9 @@ use near_sdk::store::{IterableMap, IterableSet};
 use near_sdk::{env, near, require, AccountId, Gas, NearToken, Promise, PromiseError};
 
 use super::{
-    parse_input, Context, ContextConfigs, ContextConfigsExt, ContextPrivilegeScope, Guard,
-    OnChainGroupMeta, Prefix, PrivilegeScope,
+    parse_input, AdminContextJoinEvent, Context, ContextConfigs, ContextConfigsExt,
+    ContextPrivilegeScope, Guard, MemberCapabilities, OnChainGroupMeta, Prefix, PrivilegeScope,
+    VisibilityInfo, VisibilityMode,
 };
 
 #[near]
@@ -518,8 +519,16 @@ impl ContextConfigs {
             GroupRequestKind::RemoveMembers { members } => {
                 self.remove_group_members(signer_id, group_id, members.into_owned());
             }
-            GroupRequestKind::RegisterContext { context_id } => {
-                self.register_context_in_group(signer_id, group_id, context_id);
+            GroupRequestKind::RegisterContext {
+                context_id,
+                visibility_mode,
+            } => {
+                self.register_context_in_group(
+                    signer_id,
+                    group_id,
+                    context_id,
+                    visibility_mode.map(Into::into),
+                );
             }
             GroupRequestKind::UnregisterContext { context_id } => {
                 self.unregister_context_from_group(signer_id, group_id, context_id);
@@ -547,6 +556,32 @@ impl ContextConfigs {
                 new_member,
             } => {
                 self.join_context_via_group(signer_id, group_id, context_id, new_member);
+            }
+            GroupRequestKind::SetMemberCapabilities {
+                member,
+                capabilities,
+            } => {
+                self.set_member_capabilities(signer_id, group_id, member, capabilities);
+            }
+            GroupRequestKind::SetContextVisibility { context_id, mode } => {
+                self.set_context_visibility(signer_id, group_id, context_id, mode.into());
+            }
+            GroupRequestKind::ManageContextAllowlist {
+                context_id,
+                add,
+                remove,
+            } => {
+                self.manage_context_allowlist(signer_id, group_id, context_id, add, remove);
+            }
+            GroupRequestKind::SetDefaultCapabilities {
+                default_capabilities,
+            } => {
+                self.set_default_capabilities(signer_id, group_id, default_capabilities);
+            }
+            GroupRequestKind::SetDefaultVisibility {
+                default_visibility,
+            } => {
+                self.set_default_visibility(signer_id, group_id, default_visibility.into());
             }
         }
     }
@@ -576,6 +611,13 @@ impl ContextConfigs {
         let used_invitations = IterableSet::new(Prefix::GroupUsedInvitations(*group_id));
         let member_contexts = IterableMap::new(Prefix::GroupMemberContexts(*group_id));
 
+        let member_capabilities =
+            IterableMap::new(Prefix::GroupMemberCapabilities(*group_id));
+        let context_visibility =
+            IterableMap::new(Prefix::GroupContextVisibility(*group_id));
+        let context_allowlists =
+            IterableMap::new(Prefix::GroupContextAllowlists(*group_id));
+
         let meta = OnChainGroupMeta {
             app_key,
             target_application: Application::new(
@@ -595,6 +637,11 @@ impl ContextConfigs {
             used_invitations,
             member_contexts,
             migration_method: None,
+            member_capabilities,
+            context_visibility,
+            context_allowlists,
+            default_member_capabilities: MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS,
+            default_context_visibility: VisibilityMode::Open,
         };
 
         let _ignored = self.groups.insert(*group_id, meta);
@@ -626,6 +673,9 @@ impl ContextConfigs {
         removed.invitation_commitments.clear();
         removed.used_invitations.clear();
         removed.member_contexts.clear();
+        removed.member_capabilities.clear();
+        removed.context_visibility.clear();
+        removed.context_allowlists.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -648,6 +698,9 @@ impl ContextConfigs {
 
         for member in &members {
             if group.members.insert(**member) {
+                let _ignored = group
+                    .member_capabilities
+                    .insert(**member, group.default_member_capabilities);
                 env::log_str(&format!("Added `{}` to group `{}`", member, group_id));
             }
         }
@@ -676,6 +729,7 @@ impl ContextConfigs {
 
             for member in &members {
                 require!(group.members.remove(&**member), "member not in group");
+                let _ignored = group.member_capabilities.remove(&**member);
                 env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
 
                 for context_id in &context_ids {
@@ -715,16 +769,27 @@ impl ContextConfigs {
         signer_id: &SignerId,
         group_id: Repr<ContextGroupId>,
         context_id: Repr<ContextId>,
+        visibility_mode: Option<VisibilityMode>,
     ) {
         let group = self
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
 
+        let is_admin = group.admins.contains(signer_id);
+        let can_create = is_admin
+            || group
+                .member_capabilities
+                .get(signer_id)
+                .map_or(false, |caps| {
+                    caps & MemberCapabilities::CAN_CREATE_CONTEXT != 0
+                });
         require!(
-            group.admins.contains(signer_id),
-            "only group admins can register contexts"
+            can_create,
+            "insufficient capabilities to create context"
         );
+
+        let mode = visibility_mode.unwrap_or(group.default_context_visibility);
 
         let context = self
             .contexts
@@ -742,6 +807,21 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+
+        // Store visibility info and auto-add creator to allowlist for Restricted
+        if mode == VisibilityMode::Restricted {
+            let _ignored = group
+                .context_allowlists
+                .insert((*context_id, signer_id.clone()), ());
+        }
+        let _ignored = group.context_visibility.insert(
+            *context_id,
+            VisibilityInfo {
+                mode,
+                creator: signer_id.clone(),
+            },
+        );
+
         let _ignored = group.context_ids.insert(*context_id);
         group.context_count += 1;
 
@@ -882,6 +962,49 @@ impl ContextConfigs {
                 group.admins.contains(signer_id) || group.members.contains(signer_id),
                 "caller is not a member of this group"
             );
+
+            let is_admin = group.admins.contains(signer_id);
+            let vis = group.context_visibility.get(&context_id);
+            let is_restricted = vis
+                .as_ref()
+                .map_or(false, |v| v.mode == VisibilityMode::Restricted);
+
+            if !is_admin {
+                if is_restricted {
+                    let on_allowlist = group
+                        .context_allowlists
+                        .contains_key(&(*context_id, signer_id.clone()));
+                    require!(
+                        on_allowlist,
+                        "not on allowlist for this restricted context"
+                    );
+                } else {
+                    // Open context: requires CAN_JOIN_OPEN_CONTEXTS
+                    let can_join = group
+                        .member_capabilities
+                        .get(signer_id)
+                        .map_or(false, |caps| {
+                            caps & MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS != 0
+                        });
+                    require!(
+                        can_join,
+                        "insufficient capabilities to join open context"
+                    );
+                }
+            } else if is_restricted {
+                // Admin force-joining a restricted context they're not on the allowlist for
+                let on_allowlist = group
+                    .context_allowlists
+                    .contains_key(&(*context_id, signer_id.clone()));
+                if !on_allowlist {
+                    AdminContextJoinEvent {
+                        group_id: format!("{}", group_id),
+                        context_id: format!("{}", context_id),
+                        admin: format!("{}", Repr::new(*signer_id)),
+                    }
+                    .emit();
+                }
+            }
         }
 
         {
@@ -916,6 +1039,171 @@ impl ContextConfigs {
         env::log_str(&format!(
             "Member `{}` joined context `{}` via group `{}`",
             new_member, context_id, group_id
+        ));
+    }
+
+    fn set_member_capabilities(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        member: Repr<SignerId>,
+        capabilities: u32,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can set member capabilities"
+        );
+
+        require!(
+            group.members.contains(&member),
+            "member not in group"
+        );
+
+        let _ignored = group.member_capabilities.insert(*member, capabilities);
+
+        env::log_str(&format!(
+            "Set capabilities for `{}` in group `{}` to {}",
+            member, group_id, capabilities
+        ));
+    }
+
+    fn set_context_visibility(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+        mode: VisibilityMode,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        let vis = group
+            .context_visibility
+            .get(&context_id)
+            .expect("context visibility not found");
+
+        require!(
+            vis.creator == *signer_id || group.admins.contains(signer_id),
+            "only the context creator or a group admin can change visibility"
+        );
+
+        let creator = vis.creator.clone();
+
+        // When switching to Restricted, auto-add creator to allowlist
+        if mode == VisibilityMode::Restricted {
+            let key = (*context_id, creator.clone());
+            if !group.context_allowlists.contains_key(&key) {
+                let _ignored = group.context_allowlists.insert(key, ());
+            }
+        }
+
+        let _ignored = group.context_visibility.insert(
+            *context_id,
+            VisibilityInfo {
+                mode: mode.clone(),
+                creator,
+            },
+        );
+
+        env::log_str(&format!(
+            "Set visibility for context `{}` in group `{}` to {:?}",
+            context_id, group_id, mode
+        ));
+    }
+
+    fn manage_context_allowlist(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+        add: Vec<Repr<SignerId>>,
+        remove: Vec<Repr<SignerId>>,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        let vis = group
+            .context_visibility
+            .get(&context_id)
+            .expect("context visibility not found");
+
+        require!(
+            vis.creator == *signer_id || group.admins.contains(signer_id),
+            "only the context creator or a group admin can manage the allowlist"
+        );
+
+        for member in &add {
+            let _ignored = group
+                .context_allowlists
+                .insert((*context_id, **member), ());
+        }
+
+        for member in &remove {
+            let _ignored = group
+                .context_allowlists
+                .remove(&(*context_id, **member));
+        }
+
+        env::log_str(&format!(
+            "Updated allowlist for context `{}` in group `{}`: added {}, removed {}",
+            context_id, group_id, add.len(), remove.len()
+        ));
+    }
+
+    fn set_default_capabilities(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        default_capabilities: u32,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can set default capabilities"
+        );
+
+        group.default_member_capabilities = default_capabilities;
+
+        env::log_str(&format!(
+            "Set default capabilities for group `{}` to {}",
+            group_id, default_capabilities
+        ));
+    }
+
+    fn set_default_visibility(
+        &mut self,
+        signer_id: &SignerId,
+        group_id: Repr<ContextGroupId>,
+        default_visibility: VisibilityMode,
+    ) {
+        let group = self
+            .groups
+            .get_mut(&group_id)
+            .expect("group does not exist");
+
+        require!(
+            group.admins.contains(signer_id),
+            "only group admins can set default visibility"
+        );
+
+        group.default_context_visibility = default_visibility.clone();
+
+        env::log_str(&format!(
+            "Set default visibility for group `{}` to {:?}",
+            group_id, default_visibility
         ));
     }
 }

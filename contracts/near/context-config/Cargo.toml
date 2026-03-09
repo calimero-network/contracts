@@ -39,4 +39,5 @@ migrations = []
 03_context_groups = []
 04_group_invitations = []
 05_group_migration_method = []
+06_group_permissions = []
 ## migrations (mutually exclusive) ##

@@ -9,6 +9,7 @@ use calimero_context_config::types::{
 };
 use calimero_context_config::Timestamp;
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::store::{IterableMap, IterableSet, LazyOption};
 use near_sdk::{near, AccountId, BlockHeight, BorshStorageKey, CryptoHash};
 
@@ -56,6 +57,77 @@ struct Context {
     pub group_id: Option<ContextGroupId>,
 }
 
+/// Bitfield constants for group member capabilities.
+#[derive(Copy, Clone, Debug)]
+pub struct MemberCapabilities;
+
+impl MemberCapabilities {
+    pub const CAN_CREATE_CONTEXT: u32 = 1 << 0;
+    pub const CAN_INVITE_MEMBERS: u32 = 1 << 1;
+    pub const CAN_JOIN_OPEN_CONTEXTS: u32 = 1 << 2;
+}
+
+/// Visibility mode for a context within a group.
+#[derive(Copy, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[borsh(crate = "::near_sdk::borsh")]
+#[serde(crate = "near_sdk::serde")]
+pub enum VisibilityMode {
+    #[default]
+    Open,
+    Restricted,
+}
+
+/// Convert from SDK VisibilityMode to contract VisibilityMode.
+impl From<calimero_context_config::VisibilityMode> for VisibilityMode {
+    fn from(mode: calimero_context_config::VisibilityMode) -> Self {
+        match mode {
+            calimero_context_config::VisibilityMode::Open => VisibilityMode::Open,
+            calimero_context_config::VisibilityMode::Restricted => VisibilityMode::Restricted,
+        }
+    }
+}
+
+/// Stores the visibility mode and creator of a context within a group.
+#[derive(Copy, BorshSerialize, BorshDeserialize, Clone, Debug)]
+#[borsh(crate = "::near_sdk::borsh")]
+pub struct VisibilityInfo {
+    pub mode: VisibilityMode,
+    pub creator: SignerId,
+}
+
+/// Structured NEP-297 event emitted when an admin force-joins a restricted
+/// context they are not on the allowlist for.
+#[derive(Debug, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct AdminContextJoinEvent {
+    pub group_id: String,
+    pub context_id: String,
+    pub admin: String,
+}
+
+impl AdminContextJoinEvent {
+    pub fn emit(&self) {
+        #[derive(Serialize)]
+        #[serde(crate = "near_sdk::serde")]
+        struct EventWrapper<'a> {
+            standard: &'static str,
+            version: &'static str,
+            event: &'static str,
+            data: &'a AdminContextJoinEvent,
+        }
+
+        let event = EventWrapper {
+            standard: "calimero_groups",
+            version: "1.0.0",
+            event: "admin_context_join",
+            data: self,
+        };
+
+        let json = near_sdk::serde_json::to_string(&event).expect("event serialization");
+        near_sdk::env::log_str(&format!("EVENT_JSON:{json}"));
+    }
+}
+
 #[derive(Debug)]
 #[near(serializers = [borsh])]
 pub struct OnChainGroupMeta {
@@ -78,6 +150,16 @@ pub struct OnChainGroupMeta {
     /// Optional migration method name for lazy upgrades (e.g. "migrate_v1_to_v2").
     /// Set by `set_group_target` and read by peer nodes during group sync.
     pub migration_method: Option<String>,
+    /// Per-member capability bitfields.
+    pub member_capabilities: IterableMap<SignerId, u32>,
+    /// Visibility info per context (mode + creator).
+    pub context_visibility: IterableMap<ContextId, VisibilityInfo>,
+    /// Allowlist entries: (context_id, signer_id) -> () for restricted contexts.
+    pub context_allowlists: IterableMap<(ContextId, SignerId), ()>,
+    /// Default capability bits assigned to new members.
+    pub default_member_capabilities: u32,
+    /// Default visibility mode for newly created contexts in this group.
+    pub default_context_visibility: VisibilityMode,
 }
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshStorageKey)]
@@ -102,6 +184,9 @@ enum Prefix {
     GroupInvitationCommitments(ContextGroupId) = 16,
     GroupUsedInvitations(ContextGroupId) = 17,
     GroupMemberContexts(ContextGroupId) = 18,
+    GroupMemberCapabilities(ContextGroupId) = 19,
+    GroupContextVisibility(ContextGroupId) = 20,
+    GroupContextAllowlists(ContextGroupId) = 21,
 }
 
 #[derive(Copy, Clone, Debug)]

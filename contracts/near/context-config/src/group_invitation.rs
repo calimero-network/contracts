@@ -148,10 +148,18 @@ impl ContextConfigs {
             "Inviter's signature is invalid"
         );
 
-        // 7. Verify the inviter is a group admin.
+        // 7. Verify the inviter is a group admin or has CAN_INVITE_MEMBERS capability.
+        let is_admin = group.admins.contains(&inviter_identity);
+        let can_invite = is_admin
+            || group
+                .member_capabilities
+                .get(&inviter_identity)
+                .map_or(false, |caps| {
+                    caps & crate::MemberCapabilities::CAN_INVITE_MEMBERS != 0
+                });
         require!(
-            group.admins.contains(&inviter_identity),
-            "Inviter is not a group admin"
+            can_invite,
+            "Inviter lacks permission to invite members"
         );
 
         // 8. Prevent replay of the inviter's signature.
@@ -163,8 +171,12 @@ impl ContextConfigs {
             "This invitation has already been used in this group."
         );
 
-        // 9. Add the new member to the group.
+        // 9. Add the new member to the group with default capabilities.
         let _ignored = group.members.insert(payload_data.new_member_identity);
+        let _ignored = group.member_capabilities.insert(
+            payload_data.new_member_identity,
+            group.default_member_capabilities,
+        );
 
         env::log_str(&format!(
             "Account {} successfully joined group {}",

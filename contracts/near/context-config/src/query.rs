@@ -7,13 +7,14 @@ use calimero_context_config::types::{
 use near_sdk::serde::Serialize;
 use near_sdk::{near, AccountId};
 
-use super::{ContextConfigs, ContextConfigsExt};
+use super::{ContextConfigs, ContextConfigsExt, VisibilityMode};
 
 #[derive(Debug, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct GroupMemberEntry {
     pub identity: Repr<SignerId>,
     pub role: String,
+    pub capabilities: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,6 +25,16 @@ pub struct GroupInfoResponse {
     pub member_count: u64,
     pub context_count: u64,
     pub migration_method: Option<String>,
+    pub default_member_capabilities: u32,
+    pub default_context_visibility: VisibilityMode,
+}
+
+#[derive(Copy, Clone, Debug, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ContextVisibilityResponse {
+    pub mode: VisibilityMode,
+    pub creator: Repr<SignerId>,
+    pub allowlist_count: u64,
 }
 
 #[near]
@@ -175,6 +186,8 @@ impl ContextConfigs {
             member_count: group.admins.len() as u64 + group.members.len() as u64,
             context_count: group.context_count,
             migration_method: group.migration_method.clone(),
+            default_member_capabilities: group.default_member_capabilities,
+            default_context_visibility: group.default_context_visibility.clone(),
         })
     }
 
@@ -218,10 +231,12 @@ impl ContextConfigs {
             .map(|id| GroupMemberEntry {
                 identity: Repr::new(*id),
                 role: "Admin".to_owned(),
+                capabilities: group.member_capabilities.get(id).copied().unwrap_or(0),
             })
             .chain(group.members.iter().map(|id| GroupMemberEntry {
                 identity: Repr::new(*id),
                 role: "Member".to_owned(),
+                capabilities: group.member_capabilities.get(id).copied().unwrap_or(0),
             }))
             .skip(offset)
             .take(length)
@@ -232,5 +247,48 @@ impl ContextConfigs {
         self.context_group_refs
             .get(&context_id)
             .map(|gid| Repr::new(*gid))
+    }
+
+    pub fn context_visibility(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+    ) -> Option<ContextVisibilityResponse> {
+        let group = self.groups.get(&group_id)?;
+        let vis = group.context_visibility.get(&context_id)?;
+
+        // Count allowlist entries for this context
+        let allowlist_count = group
+            .context_allowlists
+            .iter()
+            .filter(|((cid, _), _)| cid == &*context_id)
+            .count() as u64;
+
+        Some(ContextVisibilityResponse {
+            mode: vis.mode.clone(),
+            creator: Repr::new(vis.creator),
+            allowlist_count,
+        })
+    }
+
+    pub fn context_allowlist(
+        &self,
+        group_id: Repr<ContextGroupId>,
+        context_id: Repr<ContextId>,
+        offset: usize,
+        length: usize,
+    ) -> Vec<Repr<SignerId>> {
+        let Some(group) = self.groups.get(&group_id) else {
+            return vec![];
+        };
+
+        group
+            .context_allowlists
+            .iter()
+            .filter(|((cid, _), _)| cid == &*context_id)
+            .map(|((_, sid), _)| Repr::new(*sid))
+            .skip(offset)
+            .take(length)
+            .collect()
     }
 }
