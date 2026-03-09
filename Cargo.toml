@@ -31,6 +31,9 @@ tokio = "1.35.1"
 
 calimero-context-config-near = { path = "./contracts/near/context-config" }
 
+[patch."https://github.com/calimero-network/core"]
+calimero-context-config = { path = "../core/crates/context/config" }
+
 [profile.release]
 strip = "symbols"
 lto = "fat"
