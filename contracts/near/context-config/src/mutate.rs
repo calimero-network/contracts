@@ -578,9 +578,7 @@ impl ContextConfigs {
             } => {
                 self.set_default_capabilities(signer_id, group_id, default_capabilities);
             }
-            GroupRequestKind::SetDefaultVisibility {
-                default_visibility,
-            } => {
+            GroupRequestKind::SetDefaultVisibility { default_visibility } => {
                 self.set_default_visibility(signer_id, group_id, default_visibility.into());
             }
         }
@@ -611,12 +609,9 @@ impl ContextConfigs {
         let used_invitations = IterableSet::new(Prefix::GroupUsedInvitations(*group_id));
         let member_contexts = IterableMap::new(Prefix::GroupMemberContexts(*group_id));
 
-        let member_capabilities =
-            IterableMap::new(Prefix::GroupMemberCapabilities(*group_id));
-        let context_visibility =
-            IterableMap::new(Prefix::GroupContextVisibility(*group_id));
-        let context_allowlists =
-            IterableMap::new(Prefix::GroupContextAllowlists(*group_id));
+        let member_capabilities = IterableMap::new(Prefix::GroupMemberCapabilities(*group_id));
+        let context_visibility = IterableMap::new(Prefix::GroupContextVisibility(*group_id));
+        let context_allowlists = IterableMap::new(Prefix::GroupContextAllowlists(*group_id));
 
         let meta = OnChainGroupMeta {
             app_key,
@@ -755,6 +750,10 @@ impl ContextConfigs {
             let identity = context_identity.rt().expect("infallible conversion");
             context.members.priviledges().revoke(&identity);
             context.application.priviledges().revoke(&identity);
+            context
+                .used_open_invitations
+                .priviledges()
+                .revoke(&identity);
 
             env::log_str(&format!(
                 "Cascade-removed `{}` from context `{}`",
@@ -784,10 +783,7 @@ impl ContextConfigs {
                 .map_or(false, |caps| {
                     caps & MemberCapabilities::CAN_CREATE_CONTEXT != 0
                 });
-        require!(
-            can_create,
-            "insufficient capabilities to create context"
-        );
+        require!(can_create, "insufficient capabilities to create context");
 
         let mode = visibility_mode.unwrap_or(group.default_context_visibility);
 
@@ -974,10 +970,7 @@ impl ContextConfigs {
                     let on_allowlist = group
                         .context_allowlists
                         .contains_key(&(*context_id, signer_id.clone()));
-                    require!(
-                        on_allowlist,
-                        "not on allowlist for this restricted context"
-                    );
+                    require!(on_allowlist, "not on allowlist for this restricted context");
                 } else {
                     // Open context: requires CAN_JOIN_OPEN_CONTEXTS
                     let can_join = group
@@ -986,10 +979,7 @@ impl ContextConfigs {
                         .map_or(false, |caps| {
                             caps & MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS != 0
                         });
-                    require!(
-                        can_join,
-                        "insufficient capabilities to join open context"
-                    );
+                    require!(can_join, "insufficient capabilities to join open context");
                 }
             } else if is_restricted {
                 // Admin force-joining a restricted context they're not on the allowlist for
@@ -1059,10 +1049,7 @@ impl ContextConfigs {
             "only group admins can set member capabilities"
         );
 
-        require!(
-            group.members.contains(&member),
-            "member not in group"
-        );
+        require!(group.members.contains(&member), "member not in group");
 
         let _ignored = group.member_capabilities.insert(*member, capabilities);
 
@@ -1142,20 +1129,19 @@ impl ContextConfigs {
         );
 
         for member in &add {
-            let _ignored = group
-                .context_allowlists
-                .insert((*context_id, **member), ());
+            let _ignored = group.context_allowlists.insert((*context_id, **member), ());
         }
 
         for member in &remove {
-            let _ignored = group
-                .context_allowlists
-                .remove(&(*context_id, **member));
+            let _ignored = group.context_allowlists.remove(&(*context_id, **member));
         }
 
         env::log_str(&format!(
             "Updated allowlist for context `{}` in group `{}`: added {}, removed {}",
-            context_id, group_id, add.len(), remove.len()
+            context_id,
+            group_id,
+            add.len(),
+            remove.len()
         ));
     }
 
