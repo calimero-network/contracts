@@ -48,7 +48,6 @@ struct OldOnChainGroupMeta {
     pub members: IterableSet<SignerId>,
     pub approved_registrations: IterableSet<ContextId>,
     pub context_ids: IterableSet<ContextId>,
-    pub context_count: u64,
 }
 
 pub fn migrate() {

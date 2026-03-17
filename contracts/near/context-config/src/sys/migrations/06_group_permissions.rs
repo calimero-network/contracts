@@ -49,7 +49,6 @@ struct OldOnChainGroupMeta {
     pub members: IterableSet<SignerId>,
     pub approved_registrations: IterableSet<ContextId>,
     pub context_ids: IterableSet<ContextId>,
-    pub context_count: u64,
     pub invitation_commitments: IterableMap<CryptoHash, BlockHeight>,
     pub used_invitations: IterableSet<CryptoHash>,
     pub member_contexts: IterableMap<(SignerId, ContextId), ContextIdentity>,

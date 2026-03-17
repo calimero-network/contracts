@@ -872,7 +872,9 @@ impl ContextConfigs {
             .collect();
         for signer in &all_signers {
             let _ignored = group.member_contexts.remove(&(signer.clone(), *context_id));
+            let _ignored = group.context_allowlists.remove(&(*context_id, signer.clone()));
         }
+        let _ignored = group.context_visibility.remove(&context_id);
 
         let _ignored = self.context_group_refs.remove(&context_id);
 
@@ -1309,7 +1311,9 @@ impl ContextConfigs {
             .collect();
         for signer in &all_signers {
             let _ignored = group.member_contexts.remove(&(signer.clone(), *context_id));
+            let _ignored = group.context_allowlists.remove(&(*context_id, signer.clone()));
         }
+        let _ignored = group.context_visibility.remove(&context_id);
 
         let _ignored = self.context_group_refs.remove(&context_id);
 
