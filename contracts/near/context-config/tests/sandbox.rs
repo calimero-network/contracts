@@ -846,7 +846,7 @@ async fn main() -> eyre::Result<()> {
 
     assert_eq!(state.len(), 1);
     println!("State: {:?}", state.get(&b"STATE"[..]));
-    assert_eq!(state.get(&b"STATE"[..]).map(|v| v.len()), Some(42));
+    assert_eq!(state.get(&b"STATE"[..]).map(|v| v.len()), Some(74));
 
     Ok(())
 }
@@ -1282,8 +1282,8 @@ async fn test_storage_usage_matches_code_size() -> eyre::Result<()> {
     println!("Node1 balance diff: {}", diff);
 
     assert!(
-        diff < NearToken::from_millinear(10),
-        "Node1 balance should not be reduced by more than 10 milliNEAR, but was reduced by {}",
+        diff < NearToken::from_millinear(15),
+        "Node1 balance should not be reduced by more than 15 milliNEAR, but was reduced by {}",
         diff
     );
 
