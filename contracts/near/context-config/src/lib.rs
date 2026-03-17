@@ -141,7 +141,6 @@ pub struct OnChainGroupMeta {
     /// Enables O(k) pagination in `group_contexts` where k is this group's
     /// context count, instead of scanning the global `context_group_refs` map.
     pub context_ids: IterableSet<ContextId>,
-    pub context_count: u64,
     pub invitation_commitments: IterableMap<CryptoHash, BlockHeight>,
     pub used_invitations: IterableSet<CryptoHash>,
     /// Maps (signer_id, context_id) -> context_identity for group-authorized joins.

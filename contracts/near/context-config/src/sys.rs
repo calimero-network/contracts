@@ -57,6 +57,10 @@ impl ContextConfigs {
             group.context_ids.clear();
             group.invitation_commitments.clear();
             group.used_invitations.clear();
+            group.member_contexts.clear();
+            group.member_capabilities.clear();
+            group.context_visibility.clear();
+            group.context_allowlists.clear();
         }
         self.context_group_refs.clear();
 

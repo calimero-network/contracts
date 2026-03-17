@@ -184,7 +184,7 @@ impl ContextConfigs {
                 group.target_application.metadata.clone(),
             ),
             member_count: group.admins.len() as u64 + group.members.len() as u64,
-            context_count: group.context_count,
+            context_count: group.context_ids.len() as u64,
             migration_method: group.migration_method.clone(),
             default_member_capabilities: group.default_member_capabilities,
             default_context_visibility: group.default_context_visibility.clone(),

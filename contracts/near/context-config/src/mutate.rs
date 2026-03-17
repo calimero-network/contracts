@@ -632,7 +632,6 @@ impl ContextConfigs {
             members,
             approved_registrations,
             context_ids,
-            context_count: 0,
             invitation_commitments,
             used_invitations,
             member_contexts,
@@ -659,7 +658,7 @@ impl ContextConfigs {
             );
 
             require!(
-                group.context_count == 0,
+                group.context_ids.is_empty(),
                 "cannot delete group with registered contexts"
             );
         }
@@ -823,7 +822,6 @@ impl ContextConfigs {
         );
 
         let _ignored = group.context_ids.insert(*context_id);
-        group.context_count += 1;
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);
 
@@ -875,8 +873,6 @@ impl ContextConfigs {
         for signer in &all_signers {
             let _ignored = group.member_contexts.remove(&(signer.clone(), *context_id));
         }
-        require!(group.context_count > 0, "context count underflow");
-        group.context_count -= 1;
 
         let _ignored = self.context_group_refs.remove(&context_id);
 
@@ -1264,7 +1260,6 @@ impl ContextConfigs {
             .get_mut(&group_id)
             .expect("group does not exist");
         let _ignored = group.context_ids.insert(*context_id);
-        group.context_count += 1;
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);
 
@@ -1306,8 +1301,15 @@ impl ContextConfigs {
             .get_mut(&group_id)
             .expect("group does not exist");
         let _ignored = group.context_ids.remove(&context_id);
-        require!(group.context_count > 0, "context count underflow");
-        group.context_count -= 1;
+        let all_signers: Vec<SignerId> = group
+            .members
+            .iter()
+            .chain(group.admins.iter())
+            .copied()
+            .collect();
+        for signer in &all_signers {
+            let _ignored = group.member_contexts.remove(&(signer.clone(), *context_id));
+        }
 
         let _ignored = self.context_group_refs.remove(&context_id);
 
