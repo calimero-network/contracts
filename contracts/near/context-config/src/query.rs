@@ -168,7 +168,11 @@ impl ContextConfigs {
         group_id: Repr<ContextGroupId>,
         admin_id: Repr<SignerId>,
     ) -> Option<&u64> {
-        self.groups.get(&group_id)?.admin_nonces.get(&admin_id)
+        let group = self.groups.get(&group_id)?;
+        group
+            .admin_nonces
+            .get(&admin_id)
+            .or_else(|| group.creator_nonces.get(&admin_id))
     }
 
     pub fn group(&self, group_id: Repr<ContextGroupId>) -> Option<GroupInfoResponse> {

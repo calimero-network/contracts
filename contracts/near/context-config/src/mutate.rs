@@ -731,6 +731,25 @@ impl ContextConfigs {
             for member in &members {
                 require!(group.members.remove(&**member), "member not in group");
                 let _ignored = group.member_capabilities.remove(&**member);
+                let _ignored = group.creator_nonces.remove(&**member);
+
+                // Revoke creator status on any contexts this member created,
+                // transferring ownership to the first admin.
+                for context_id in &context_ids {
+                    if let Some(vis) = group.context_visibility.get(context_id) {
+                        if vis.creator == **member {
+                            let new_creator = signer_id.clone();
+                            let _ignored = group.context_visibility.insert(
+                                *context_id,
+                                VisibilityInfo {
+                                    mode: vis.mode,
+                                    creator: new_creator,
+                                },
+                            );
+                        }
+                    }
+                }
+
                 env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
 
                 for context_id in &context_ids {
