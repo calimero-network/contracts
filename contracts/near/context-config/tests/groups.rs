@@ -1155,8 +1155,8 @@ async fn test_non_admin_register_rejected() -> eyre::Result<()> {
 
     let err_str = err.to_string();
     assert!(
-        err_str.contains("only group admins can register contexts"),
-        "Expected 'only group admins can register contexts', got: {}",
+        err_str.contains("insufficient capabilities to create context"),
+        "Expected 'insufficient capabilities to create context', got: {}",
         err_str
     );
 

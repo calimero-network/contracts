@@ -1018,6 +1018,14 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+
+        require!(
+            !group
+                .member_contexts
+                .contains_key(&(signer_id.clone(), *context_id)),
+            "member already joined this context via group"
+        );
+
         let _ignored = group
             .member_contexts
             .insert((signer_id.clone(), *context_id), *new_member);
