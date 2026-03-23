@@ -946,7 +946,9 @@ impl ContextConfigs {
             "context does not exist"
         );
 
-        let _already_approved = group.approved_registrations.insert(*context_id, signer_id.clone());
+        let _already_approved = group
+            .approved_registrations
+            .insert(*context_id, signer_id.clone());
 
         env::log_str(&format!(
             "Context `{}` approved for registration in group `{}`",

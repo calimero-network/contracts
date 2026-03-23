@@ -402,6 +402,7 @@ async fn test_peer_sync_sees_migration_method_and_target_app() -> eyre::Result<(
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             nonce.next(),
         )?)
@@ -531,6 +532,7 @@ async fn test_join_via_group_then_upgrade_preserves_membership() -> eyre::Result
             group_id,
             GroupRequestKind::RegisterContext {
                 context_id: ctx.context_id,
+                visibility_mode: None,
             },
             nonce.next(),
         )?)
