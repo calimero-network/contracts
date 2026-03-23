@@ -61,6 +61,7 @@ impl ContextConfigs {
             group.member_capabilities.clear();
             group.context_visibility.clear();
             group.context_allowlists.clear();
+            group.creator_nonces.clear();
         }
         self.context_group_refs.clear();
 

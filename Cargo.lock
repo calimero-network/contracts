@@ -306,6 +306,7 @@ dependencies = [
 [[package]]
 name = "calimero-context-config"
 version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?tag=0.10.1-rc.7#deb96353be0dd1e6bf74c52761ceaf49f1a414ff"
 dependencies = [
  "borsh",
  "bs58 0.5.1",

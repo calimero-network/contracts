@@ -93,6 +93,10 @@ pub fn migrate() {
             IterableMap::new(Prefix::GroupContextVisibility(*group_id));
         group.context_allowlists =
             IterableMap::new(Prefix::GroupContextAllowlists(*group_id));
+        group.creator_nonces =
+            IterableMap::new(Prefix::GroupCreatorNonces(*group_id));
+        group.approved_registrations =
+            IterableMap::new(Prefix::GroupApprovedRegistrations(*group_id));
         group.default_member_capabilities = MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS;
         group.default_context_visibility = VisibilityMode::Open;
 

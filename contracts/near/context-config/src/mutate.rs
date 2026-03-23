@@ -130,9 +130,13 @@ impl ContextConfigs {
             return;
         };
 
-        let Some(current_nonce) = group.admin_nonces.get_mut(signer_id) else {
-            // Signer has no nonce entry — not a registered admin.
-            // The operation itself will reject via the admins-set check.
+        let Some(current_nonce) = group
+            .admin_nonces
+            .get_mut(signer_id)
+            .or_else(|| group.creator_nonces.get_mut(signer_id))
+        else {
+            // Signer has no nonce entry — not a registered admin or context creator.
+            // The operation itself will reject via the admins-set / creator check.
             return;
         };
 
@@ -601,7 +605,7 @@ impl ContextConfigs {
 
         let members = IterableSet::new(Prefix::GroupMembers(*group_id));
         let approved_registrations =
-            IterableSet::new(Prefix::GroupApprovedRegistrations(*group_id));
+            IterableMap::new(Prefix::GroupApprovedRegistrations(*group_id));
         let context_ids = IterableSet::new(Prefix::GroupContextIds(*group_id));
 
         let invitation_commitments =
@@ -612,6 +616,7 @@ impl ContextConfigs {
         let member_capabilities = IterableMap::new(Prefix::GroupMemberCapabilities(*group_id));
         let context_visibility = IterableMap::new(Prefix::GroupContextVisibility(*group_id));
         let context_allowlists = IterableMap::new(Prefix::GroupContextAllowlists(*group_id));
+        let creator_nonces = IterableMap::new(Prefix::GroupCreatorNonces(*group_id));
 
         let meta = OnChainGroupMeta {
             app_key,
@@ -634,6 +639,7 @@ impl ContextConfigs {
             member_capabilities,
             context_visibility,
             context_allowlists,
+            creator_nonces,
             default_member_capabilities: MemberCapabilities::CAN_JOIN_OPEN_CONTEXTS,
             default_context_visibility: VisibilityMode::Open,
         };
@@ -670,6 +676,7 @@ impl ContextConfigs {
         removed.member_capabilities.clear();
         removed.context_visibility.clear();
         removed.context_allowlists.clear();
+        removed.creator_nonces.clear();
 
         env::log_str(&format!("Group `{}` deleted", group_id));
     }
@@ -813,6 +820,12 @@ impl ContextConfigs {
             },
         );
 
+        // Track nonce for non-admin context creators so their visibility
+        // operations (SetContextVisibility, ManageContextAllowlist) get replay protection.
+        if !is_admin && !group.creator_nonces.contains_key(signer_id) {
+            let _ignored = group.creator_nonces.insert(signer_id.clone(), 0);
+        }
+
         let _ignored = group.context_ids.insert(*context_id);
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);
@@ -933,7 +946,7 @@ impl ContextConfigs {
             "context does not exist"
         );
 
-        let _already_approved = group.approved_registrations.insert(*context_id);
+        let _already_approved = group.approved_registrations.insert(*context_id, signer_id.clone());
 
         env::log_str(&format!(
             "Context `{}` approved for registration in group `{}`",
@@ -1227,17 +1240,17 @@ impl ContextConfigs {
             );
         }
 
-        {
+        let approver = {
             let group = self
                 .groups
                 .get_mut(&group_id)
                 .expect("group does not exist");
 
-            require!(
-                group.approved_registrations.remove(&context_id),
-                "group admin has not approved this context for registration"
-            );
-        }
+            group
+                .approved_registrations
+                .remove(&context_id)
+                .expect("group admin has not approved this context for registration")
+        };
 
         let context = self
             .contexts
@@ -1253,6 +1266,23 @@ impl ContextConfigs {
             .groups
             .get_mut(&group_id)
             .expect("group does not exist");
+
+        let mode = group.default_context_visibility;
+
+        // Store visibility info and auto-add approver to allowlist for Restricted
+        if mode == VisibilityMode::Restricted {
+            let _ignored = group
+                .context_allowlists
+                .insert((*context_id, approver.clone()), ());
+        }
+        let _ignored = group.context_visibility.insert(
+            *context_id,
+            VisibilityInfo {
+                mode,
+                creator: approver,
+            },
+        );
+
         let _ignored = group.context_ids.insert(*context_id);
 
         let _ignored = self.context_group_refs.insert(*context_id, *group_id);

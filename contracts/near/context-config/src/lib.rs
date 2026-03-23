@@ -138,7 +138,7 @@ pub struct OnChainGroupMeta {
     pub admins: IterableSet<SignerId>,
     pub admin_nonces: IterableMap<SignerId, u64>,
     pub members: IterableSet<SignerId>,
-    pub approved_registrations: IterableSet<ContextId>,
+    pub approved_registrations: IterableMap<ContextId, SignerId>,
     /// Forward index: contexts that belong to this group.
     /// Enables O(k) pagination in `group_contexts` where k is this group's
     /// context count, instead of scanning the global `context_group_refs` map.
@@ -157,6 +157,8 @@ pub struct OnChainGroupMeta {
     pub context_visibility: IterableMap<ContextId, VisibilityInfo>,
     /// Allowlist entries: (context_id, signer_id) -> () for restricted contexts.
     pub context_allowlists: IterableMap<(ContextId, SignerId), ()>,
+    /// Nonce tracking for non-admin context creators with visibility control.
+    pub creator_nonces: IterableMap<SignerId, u64>,
     /// Default capability bits assigned to new members.
     pub default_member_capabilities: u32,
     /// Default visibility mode for newly created contexts in this group.
@@ -188,6 +190,7 @@ enum Prefix {
     GroupMemberCapabilities(ContextGroupId) = 19,
     GroupContextVisibility(ContextGroupId) = 20,
     GroupContextAllowlists(ContextGroupId) = 21,
+    GroupCreatorNonces(ContextGroupId) = 22,
 }
 
 #[derive(Copy, Clone, Debug)]
