@@ -2129,7 +2129,10 @@ async fn test_creator_auto_added_to_allowlist_on_restricted_context() -> eyre::R
         .json()?;
 
     assert_eq!(vis["mode"], "Restricted");
-    assert_eq!(vis["allowlist_count"], 1, "creator should be auto-added to allowlist");
+    assert_eq!(
+        vis["allowlist_count"], 1,
+        "creator should be auto-added to allowlist"
+    );
 
     // Check the creator is on the allowlist
     let admin_id: Repr<SignerId> = admin_sk.verifying_key().to_bytes().rt()?;

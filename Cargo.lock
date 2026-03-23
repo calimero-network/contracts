@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "calimero-context-config-near"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "calimero-context-config",
  "cfg-if 1.0.0",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "calimero-context-proxy-near"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "calimero-context-config",
  "calimero-context-config-near",
@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "calimero-mock-external-near"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "eyre",
  "near-sdk",
@@ -362,7 +362,7 @@ dependencies = [
 
 [[package]]
 name = "calimero-registry"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "hex",
  "near-sdk",

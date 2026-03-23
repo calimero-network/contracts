@@ -68,7 +68,9 @@ impl MemberCapabilities {
 }
 
 /// Visibility mode for a context within a group.
-#[derive(Copy, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(
+    Copy, BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Default, Serialize, Deserialize,
+)]
 #[borsh(crate = "::near_sdk::borsh")]
 #[serde(crate = "near_sdk::serde")]
 pub enum VisibilityMode {

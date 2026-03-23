@@ -390,8 +390,7 @@ async fn test_peer_sync_sees_migration_method_and_target_app() -> eyre::Result<(
         .await?
         .into_result()?;
 
-    let (admin_sk, group_id, mut nonce) =
-        create_group(&admin_node, &contract, &mut rng).await?;
+    let (admin_sk, group_id, mut nonce) = create_group(&admin_node, &contract, &mut rng).await?;
 
     let ctx = create_test_context(&admin_node, &contract, &mut rng).await?;
 
@@ -520,8 +519,7 @@ async fn test_join_via_group_then_upgrade_preserves_membership() -> eyre::Result
         .await?
         .into_result()?;
 
-    let (admin_sk, group_id, mut nonce) =
-        create_group(&node, &contract, &mut rng).await?;
+    let (admin_sk, group_id, mut nonce) = create_group(&node, &contract, &mut rng).await?;
 
     // Create and register a context.
     let ctx = create_test_context(&node, &contract, &mut rng).await?;
@@ -590,7 +588,10 @@ async fn test_join_via_group_then_upgrade_preserves_membership() -> eyre::Result
         }))
         .await?
         .json()?;
-    assert!(has_member, "member should be in context after join_via_group");
+    assert!(
+        has_member,
+        "member should be in context after join_via_group"
+    );
 
     // Admin upgrades group target with migration.
     let _res = node
@@ -655,8 +656,7 @@ async fn test_sequential_upgrades_replace_migration_method() -> eyre::Result<()>
         .await?
         .into_result()?;
 
-    let (admin_sk, group_id, mut nonce) =
-        create_group(&node, &contract, &mut rng).await?;
+    let (admin_sk, group_id, mut nonce) = create_group(&node, &contract, &mut rng).await?;
 
     // Upgrade 1: with migrate_v1_to_v2.
     let _res = node

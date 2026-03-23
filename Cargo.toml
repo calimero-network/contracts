@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.dependencies]
-calimero-context-config = { git = "https://github.com/calimero-network/core", tag = "0.10.0-rc.1" }
+calimero-context-config = { git = "https://github.com/calimero-network/core", tag = "0.10.1-rc.7" }
 cfg-if = "1.0.0"
 ed25519-dalek = "2.1.1"
 eyre = "0.6.12"

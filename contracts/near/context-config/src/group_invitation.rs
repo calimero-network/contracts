@@ -157,10 +157,7 @@ impl ContextConfigs {
                 .map_or(false, |caps| {
                     caps & crate::MemberCapabilities::CAN_INVITE_MEMBERS != 0
                 });
-        require!(
-            can_invite,
-            "Inviter lacks permission to invite members"
-        );
+        require!(can_invite, "Inviter lacks permission to invite members");
 
         // 8. Prevent replay of the inviter's signature.
         let inviter_signature_hash: CryptoHash = env::sha256(&inviter_signature_bytes)
