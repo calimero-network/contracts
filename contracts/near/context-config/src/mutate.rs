@@ -753,6 +753,11 @@ impl ContextConfigs {
                 env::log_str(&format!("Removed `{}` from group `{}`", member, group_id));
 
                 for context_id in &context_ids {
+                    // Remove allowlist entries for this member across all contexts
+                    let _ignored = group
+                        .context_allowlists
+                        .remove(&(*context_id, (**member).clone()));
+
                     if let Some(context_identity) = group
                         .member_contexts
                         .remove(&((**member).clone(), *context_id))
