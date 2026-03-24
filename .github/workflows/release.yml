@@ -146,7 +146,7 @@ jobs:
               fi
             fi
           done
-          tar -czf "artifacts/near-contracts.tar.gz" -C "$tmp_dir" .
+          tar -czf "artifacts/near.tar.gz" -C "$tmp_dir" .
           rm -rf "$tmp_dir"
 
       - name: Upload NEAR artifacts
