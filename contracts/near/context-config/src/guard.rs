@@ -52,6 +52,19 @@ impl<T> Guard<T> {
         Ok(GuardHandle { inner: self })
     }
 
+    /// Direct mutable access for internally-authorized operations.
+    ///
+    /// Use this for group-authorized context mutations where the caller
+    /// has already verified authorization at a higher level (e.g., group
+    /// admin check). The revision counter is incremented to maintain
+    /// sync consistency, same as `GuardMut::drop`.
+    ///
+    /// The caller MUST verify authorization before calling this.
+    pub fn authorized_get_mut(&mut self) -> &mut T {
+        self.revision = self.revision.wrapping_add(1);
+        &mut self.inner
+    }
+
     pub fn into_inner(self) -> T {
         let mut this = self;
         this.priviledged.clear();
